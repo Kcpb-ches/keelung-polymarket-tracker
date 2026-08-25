@@ -10,7 +10,7 @@
 
 // 版號跟 index.html 的 ?v= 對應。若 console 印出的版號跟你剛改的不一樣，
 // 代表瀏覽器讀的是快取的舊檔，按 Cmd+Shift+R 強制重新載入。
-const APP_VERSION = 3;
+const APP_VERSION = 4;
 console.log(`[基隆選舉監控] app.js v${APP_VERSION}`);
 
 // ── 設定 ────────────────────────────────────────────────────
@@ -40,8 +40,11 @@ let markets     = [];     // 正規化後的候選人盤口
 let marketById  = {};     // conditionId → market
 let allTrades   = [];     // 正規化後的成交明細（新→舊）
 let prevKeys    = new Set();
-let dataSource  = 'loading';   // 'live' | 'snapshot' | 'error'
-let snapshotAt  = null;
+// 成交明細與盤口賠率的來源分開記錄——Gamma API（賠率）從瀏覽器直連常被 CORS 擋，
+// 但 Data API（成交明細）通常是通的，兩者不該互相拖累。
+let tradesSource = 'loading';  // 'live' | 'snapshot' | 'error'
+let oddsSource   = 'loading';  // 'live' | 'snapshot' | 'error'
+let snapshotAt   = null;
 let firstLoad   = true;
 
 let viewMode = 'table';        // 'table' | 'feed' | 'wallet'
@@ -137,12 +140,11 @@ async function fetchJsonRetry(url, attempts = RETRY_ATTEMPTS) {
   throw lastErr;
 }
 
-/** 直連：抓 event 盤口 + 全部成交明細 */
-async function loadLive() {
-  const evArr = await fetchJsonRetry(`${GAMMA_API}/events?id=${EVENT_ID}`);
-  const ev = Array.isArray(evArr) ? evArr[0] : evArr;
-  if (!ev) throw new Error('event 不存在');
-
+/**
+ * 直連抓成交明細（Data API）。
+ * 這是核心資料，實測從瀏覽器直連相當穩定。
+ */
+async function fetchTradesLive() {
   const trades = [];
   for (let offset = 0; offset < MAX_TRADES; offset += TRADE_PAGE_SIZE) {
     const batch = await fetchJsonRetry(
@@ -151,7 +153,22 @@ async function loadLive() {
     trades.push(...batch);
     if (batch.length < TRADE_PAGE_SIZE) break;
   }
-  return { event: ev, trades, fetchedAt: Date.now() };
+  return trades;
+}
+
+/**
+ * 直連抓盤口賠率（Gamma API）。
+ *
+ * ⚠️ 這個端點從瀏覽器直連並不可靠：Cloudflare 有時會回傳不含 CORS 標頭的回應，
+ * 瀏覽器就會擋下來（用 curl 測反而會成功，因為拿到的是快取版本）。
+ * 所以這裡失敗屬於預期內，呼叫端要能改用快照裡的盤口資料，
+ * 不可以因此把整頁降級成快照模式。
+ */
+async function fetchEventLive() {
+  const evArr = await fetchJsonRetry(`${GAMMA_API}/events?id=${EVENT_ID}`);
+  const ev = Array.isArray(evArr) ? evArr[0] : evArr;
+  if (!ev) throw new Error('event 不存在');
+  return ev;
 }
 
 /** 備援：讀 GitHub Actions 產生的快照 */
@@ -241,29 +258,46 @@ async function loadData(manual = false) {
   const btn = $('refreshBtn');
   if (manual) btn.classList.add('spinning');
 
-  let payload = null;
-  try {
-    payload = await loadLive();
-    dataSource = 'live';
-    snapshotAt = null;
-  } catch (liveErr) {
-    console.warn('[直連失敗，改讀快照]', liveErr.message);
+  // 兩個 API 各自獨立嘗試，其中一個失敗不影響另一個
+  const [tradesRes, eventRes] = await Promise.allSettled([fetchTradesLive(), fetchEventLive()]);
+  let liveTrades = tradesRes.status === 'fulfilled' ? tradesRes.value : null;
+  let liveEvent  = eventRes.status  === 'fulfilled' ? eventRes.value  : null;
+
+  if (!liveTrades) console.warn('[成交明細直連失敗]', tradesRes.reason?.message);
+  if (!liveEvent)  console.warn('[盤口直連失敗，改用快照的盤口]', eventRes.reason?.message);
+
+  // 缺哪一塊就從快照補
+  let snapshot = null;
+  if (!liveTrades || !liveEvent) {
     try {
-      payload = await loadSnapshot();
-      dataSource = 'snapshot';
-      snapshotAt = payload.fetchedAt;
+      snapshot = await loadSnapshot();
     } catch (snapErr) {
-      console.error('[快照也讀不到]', snapErr.message);
-      dataSource = 'error';
-      renderSourceState(liveErr.message, snapErr.message);
-      if (firstLoad) $('feed').innerHTML = '<div class="empty">目前無法取得任何資料，請見上方說明。</div>';
-      btn.classList.remove('spinning');
-      return;
+      if (!liveTrades) {
+        console.error('[快照也讀不到]', snapErr.message);
+        tradesSource = oddsSource = 'error';
+        renderSourceState(tradesRes.reason?.message, snapErr.message);
+        if (firstLoad) $('feed').innerHTML = '<div class="empty">目前無法取得任何資料，請見上方說明。</div>';
+        btn.classList.remove('spinning');
+        return;
+      }
     }
   }
 
-  normalizeMarkets(payload.event);
-  const fresh = normalizeTrades(payload.trades);
+  const event     = liveEvent  || snapshot?.event;
+  const rawTrades = liveTrades || snapshot?.trades;
+  if (!event || !rawTrades) {
+    tradesSource = oddsSource = 'error';
+    renderSourceState(tradesRes.reason?.message, '快照缺少必要欄位');
+    btn.classList.remove('spinning');
+    return;
+  }
+
+  tradesSource = liveTrades ? 'live' : 'snapshot';
+  oddsSource   = liveEvent  ? 'live' : 'snapshot';
+  snapshotAt   = snapshot ? snapshot.fetchedAt : null;
+
+  normalizeMarkets(event);
+  const fresh = normalizeTrades(rawTrades);
 
   // 新進來的成交打上高亮
   if (!firstLoad) {
@@ -285,26 +319,9 @@ async function loadData(manual = false) {
 function renderSourceState(liveErr, snapErr) {
   const badge = $('sourceBadge');
   const notice = $('sourceNotice');
+  const snapLabel = snapshotAt ? `${tpeTime(snapshotAt)}（${timeAgo(snapshotAt)}）` : '時間未知';
 
-  if (dataSource === 'live') {
-    badge.className = 'badge badge-live';
-    badge.textContent = '● 即時直連';
-    $('lastUpdate').textContent = `更新於 ${tpeTime(Date.now())}`;
-    notice.style.display = 'none';
-  } else if (dataSource === 'snapshot') {
-    badge.className = 'badge badge-snapshot';
-    badge.textContent = '● 快照資料';
-    $('lastUpdate').textContent = snapshotAt
-      ? `快照時間 ${tpeTime(snapshotAt)}（${timeAgo(snapshotAt)}）`
-      : '快照時間未知';
-    notice.className = 'notice container';
-    notice.style.display = '';
-    notice.innerHTML =
-      `<b>目前為快照模式。</b>連不到 Polymarket API（台灣 IP 可能被封鎖），` +
-      `畫面顯示的是排程抓取的存檔資料，非即時。` +
-      (snapshotAt ? `快照抓取於 <b>${tpeTime(snapshotAt)}</b>（${timeAgo(snapshotAt)}）。` : '') +
-      `　若要看即時資料，請連上 VPN 後重新整理。`;
-  } else {
+  if (tradesSource === 'error') {
     badge.className = 'badge badge-error';
     badge.textContent = '● 連線失敗';
     $('lastUpdate').textContent = '無法取得資料';
@@ -312,10 +329,34 @@ function renderSourceState(liveErr, snapErr) {
     notice.style.display = '';
     notice.innerHTML =
       `<b>兩種資料來源都失敗。</b><br>` +
-      `直連 Polymarket API：${escapeHtml(liveErr || '未知錯誤')}　` +
+      `直連 Polymarket Data API：${escapeHtml(liveErr || '未知錯誤')}　` +
       `（台灣 IP 通常被封鎖，需連 VPN）<br>` +
-      `讀取本地快照 <code>data.json</code>：${escapeHtml(snapErr || '未知錯誤')}　` +
-      `（尚未產生快照，可執行 <code>python3 scripts/snapshot.py</code> 建立）`;
+      `讀取快照 <code>data.json</code>：${escapeHtml(snapErr || '未知錯誤')}`;
+  } else if (tradesSource === 'live') {
+    // 成交明細是即時的 → 綠燈。賠率若來自快照，另外用一行說明，不影響主要判讀。
+    badge.className = 'badge badge-live';
+    badge.textContent = '● 即時直連';
+    $('lastUpdate').textContent = `更新於 ${tpeTime(Date.now())}`;
+    if (oddsSource === 'live') {
+      notice.style.display = 'none';
+    } else {
+      notice.className = 'notice container';
+      notice.style.display = '';
+      notice.innerHTML =
+        `<b>成交明細為即時，但賠率是快照值。</b>` +
+        `Polymarket 的盤口 API（Gamma）從瀏覽器直連時常被 CORS 擋掉，這是該服務本身的限制。` +
+        `上方候選人卡的機率、成交量、流動性擷取於 <b>${snapLabel}</b>；下方每一筆成交紀錄則是當下最新。`;
+    }
+  } else {
+    badge.className = 'badge badge-snapshot';
+    badge.textContent = '● 快照資料';
+    $('lastUpdate').textContent = `快照時間 ${snapLabel}`;
+    notice.className = 'notice container';
+    notice.style.display = '';
+    notice.innerHTML =
+      `<b>目前為快照模式。</b>連不到 Polymarket API（台灣 IP 可能被封鎖），` +
+      `畫面顯示的是排程抓取的存檔資料，非即時。` +
+      `快照抓取於 <b>${snapLabel}</b>。　若要看即時資料，請連上 VPN 後重新整理。`;
   }
   $('totalCount').textContent = fmtInt(allTrades.length);
 }
