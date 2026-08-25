@@ -388,6 +388,7 @@ tr:hover .copy-btn, .feed-item:hover .copy-btn, .wallet-item:hover .copy-btn { o
 }
 .wallet-item.early .wallet-rank { background: rgba(210,153,34,.16); color: var(--warn); }
 .wallet-name { font-weight: 650; font-size: 14px; }
+.wallet-links { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; }
 .wallet-badge {
   font-size: 10.5px; font-weight: 650; padding: 1px 7px; border-radius: 5px;
   background: rgba(210,153,34,.14); color: var(--warn); white-space: nowrap;

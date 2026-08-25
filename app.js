@@ -10,7 +10,7 @@
 
 // 版號跟 index.html 的 ?v= 對應。若 console 印出的版號跟你剛改的不一樣，
 // 代表瀏覽器讀的是快取的舊檔，按 Cmd+Shift+R 強制重新載入。
-const APP_VERSION = 6;
+const APP_VERSION = 7;
 console.log(`[基隆選舉監控] app.js v${APP_VERSION}`);
 
 // ── 設定 ────────────────────────────────────────────────────
@@ -631,7 +631,12 @@ function renderWallets(rows) {
         <span class="wallet-name">${w.isAnon ? '<span class="trader-anon">未具名</span>' : escapeHtml(w.name)}</span>
         <a class="link mono" href="${polygonscanAddr(w.wallet)}" target="_blank" rel="noopener" title="${w.wallet}">${shortAddr(w.wallet)}</a>
         ${copyBtn(w.wallet, '複製錢包')}
-        <a class="link" href="${polymarketProfile(w.wallet)}" target="_blank" rel="noopener" style="font-size:12px">Polymarket ↗</a>
+        <span class="wallet-links">
+          <a class="link" href="${polymarketProfile(w.wallet)}" target="_blank" rel="noopener">Polymarket ↗</a>
+          <span class="dot">·</span>
+          <a class="link" href="${relayLinkAddr(w.wallet)}" target="_blank" rel="noopener"
+             title="在 relay.link 查這個錢包的跨鏈轉帳紀錄（回溯 USDC.e 的來源鏈）">Relay ↗</a>
+        </span>
         ${isEarly ? `<span class="wallet-badge">開盤 ${EARLY_WINDOW_H} 小時內進場</span>` : ''}
       </div>
       <div class="wallet-grid">
