@@ -167,6 +167,47 @@ def ts_to_tpe(unix_ts) -> str:
         return "時間不明"
 
 
+def _wallet_entry(t: dict, cond_to_cand: dict) -> dict:
+    """把一筆交易整理成通知信要用的欄位"""
+    size = float(t.get("size") or 0)
+    price = float(t.get("price") or 0)
+    return {
+        "wallet": (t.get("proxyWallet") or "").lower(),
+        "name": display_name(t),
+        "first_seen": ts_to_tpe(t.get("timestamp")),
+        "first_timestamp": t.get("timestamp"),
+        "candidate": cand_zh(cond_to_cand.get(t.get("conditionId"), "")),
+        "outcome": t.get("outcome"),
+        "side": t.get("side"),
+        "size": round(size, 4),
+        "price": round(price, 6),
+        "total": round(size * price, 4),
+        "tx": t.get("transactionHash"),
+    }
+
+
+def _first_trade_per_wallet(trades: list) -> dict:
+    """每個錢包的首筆交易：由舊到新掃過，第一次遇到的就是最早那筆"""
+    first = {}
+    for t in sorted(trades, key=lambda x: x.get("timestamp") or 0):
+        w = (t.get("proxyWallet") or "").lower()
+        if w and w not in first:
+            first[w] = t
+    return first
+
+
+def build_test_sample(trades: list, cond_to_cand: dict, n: int = 2) -> list:
+    """
+    取最近進場的 n 個錢包當測試信的內容。
+    用真實資料而非假資料，這樣測試信長什麼樣，真信就長什麼樣。
+    """
+    first = _first_trade_per_wallet(trades)
+    latest = sorted(first.values(), key=lambda x: x.get("timestamp") or 0, reverse=True)[:n]
+    out = [_wallet_entry(t, cond_to_cand) for t in latest]
+    out.sort(key=lambda x: x.get("first_timestamp") or 0)
+    return out
+
+
 def detect_new_wallets(trades: list, cond_to_cand: dict):
     """
     比對名冊，找出這次才第一次出現的錢包。
@@ -187,32 +228,13 @@ def detect_new_wallets(trades: list, cond_to_cand: dict):
     bootstrap = prev is None
     seen = dict(prev.get("wallets", {})) if prev else {}
 
-    # 每個錢包的「首筆交易」：由舊到新掃過，第一次遇到的就是最早那筆
-    first_trade = {}
-    for t in sorted(trades, key=lambda x: x.get("timestamp") or 0):
-        w = (t.get("proxyWallet") or "").lower()
-        if w and w not in first_trade:
-            first_trade[w] = t
+    first_trade = _first_trade_per_wallet(trades)
 
     new_wallets = []
     for wallet, t in first_trade.items():
         if wallet in seen:
             continue
-        size = float(t.get("size") or 0)
-        price = float(t.get("price") or 0)
-        entry = {
-            "wallet": wallet,
-            "name": display_name(t),
-            "first_seen": ts_to_tpe(t.get("timestamp")),
-            "first_timestamp": t.get("timestamp"),
-            "candidate": cand_zh(cond_to_cand.get(t.get("conditionId"), "")),
-            "outcome": t.get("outcome"),
-            "side": t.get("side"),
-            "size": round(size, 4),
-            "price": round(price, 6),
-            "total": round(size * price, 4),
-            "tx": t.get("transactionHash"),
-        }
+        entry = _wallet_entry(t, cond_to_cand)
         seen[wallet] = {
             "first_seen": entry["first_seen"],
             "name": entry["name"],
@@ -230,11 +252,21 @@ def detect_new_wallets(trades: list, cond_to_cand: dict):
     return new_wallets, bootstrap
 
 
-def build_notification(new_wallets: list):
+def build_notification(new_wallets: list, test: bool = False):
     """產生通知信的主旨與 HTML 內文，寫成檔案供 workflow 讀取。"""
     n = len(new_wallets)
     big = [w for w in new_wallets if w["total"] >= 50]
     subject = f"[基隆盤] {n} 個新錢包進場" + (f"，其中 {len(big)} 筆逾 $50" if big else "")
+    if test:
+        subject = "【測試】" + subject
+
+    test_banner = ("""
+  <div style="background:#fff8e5;border:1px solid #d29922;border-radius:8px;
+              padding:11px 15px;margin-bottom:16px;font-size:13px">
+    <b style="color:#9a6700">這是一封測試信。</b>
+    下面列的是<b>目前最近進場的錢包</b>，不是新偵測到的。
+    收到這封代表郵件通知設定正常，真的有新錢包時就會收到同樣格式的信。
+  </div>""" if test else "")
 
     rows = []
     for w in new_wallets:
@@ -292,8 +324,9 @@ def build_notification(new_wallets: list):
   <h2 style="margin:0 0 4px;font-size:19px">基隆市長選舉賭盤：{n} 個新錢包進場</h2>
   <p style="margin:0 0 18px;color:#59636e;font-size:13px">
     偵測時間 {datetime.now(TZ8).strftime('%Y-%m-%d %H:%M:%S')}（台北時間）
-    ｜ 以下錢包在此賭盤從未出現過
+    ｜ {'測試模式，非實際偵測結果' if test else '以下錢包在此賭盤從未出現過'}
   </p>
+{test_banner}
 
   <table style="width:100%;border-collapse:collapse;border:1px solid #d8dee4;border-radius:8px">
     <thead>
@@ -343,7 +376,7 @@ def write_json_atomic(path: str, payload: dict):
     os.replace(tmp, path)
 
 
-def main() -> int:
+def main(test_email: bool = False) -> int:
     now = datetime.now(TZ8)
     print("=" * 62)
     print(f"  基隆市長選舉 Polymarket 快照　{now:%Y-%m-%d %H:%M:%S} (UTC+8)")
@@ -428,6 +461,18 @@ def main() -> int:
     else:
         print("[新錢包] 無，不寄信")
 
+    # 測試模式：沒有真的新錢包時，改用最近進場的錢包產生一封測試信，
+    # 用來驗證郵件設定是否正常。不會動到名冊。
+    if test_email and not new_wallets:
+        sample = build_test_sample(trades, cond_to_name)
+        if sample:
+            subject = build_notification(sample, test=True)
+            print(f"[測試] 已產生測試信：{subject}")
+        else:
+            print("[測試] 沒有任何交易資料可用來組測試信")
+    elif test_email:
+        print("[測試] 本輪本來就有新錢包，直接寄真實通知")
+
     print(f"\n已寫入：{DATA_PATH}")
     print(f"　　　　{os.path.join(SNAPSHOT_DIR, f'{now:%Y-%m-%d}.json')}")
     print(f"　　　　{SEEN_WALLETS_PATH}")
@@ -435,4 +480,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(test_email="--test-email" in sys.argv))

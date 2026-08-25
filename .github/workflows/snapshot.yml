@@ -9,6 +9,11 @@ on:
     # 這個盤成交稀疏，抓太頻繁只會讓 repo 累積大量內容相同、只有時間戳不同的 commit。
     - cron: '5 */3 * * *'
   workflow_dispatch:        # 允許在 Actions 頁面手動觸發
+    inputs:
+      test_email:
+        description: '寄一封測試信（驗證郵件設定是否正常，不會動到錢包名冊）'
+        type: boolean
+        default: false
 
 permissions:
   contents: write           # 需要寫入權限才能 commit 快照
@@ -28,7 +33,7 @@ jobs:
           python-version: '3.12'
 
       - name: 抓取快照
-        run: python3 scripts/snapshot.py
+        run: python3 scripts/snapshot.py ${{ inputs.test_email && '--test-email' || '' }}
 
       # 先存檔再寄信：萬一寄信失敗，資料至少已經保住，網站不會因為
       # 郵件設定的問題而拿到過期快照。寄信失敗會讓整個 workflow 標記為失敗，
