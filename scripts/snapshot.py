@@ -15,8 +15,10 @@ snapshot.py — 抓取基隆市長選舉 Polymarket 盤口與成交明細，存�
     python3 scripts/snapshot.py
 """
 
+import html
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -36,6 +38,24 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(_HERE)
 DATA_PATH = os.path.join(ROOT, "data.json")
 SNAPSHOT_DIR = os.path.join(ROOT, "snapshots")
+
+# 已知錢包名冊。這是「哪些錢包算看過了」的唯一依據，會 commit 進 repo。
+# 不從 data.json 反推，因為 data.json 有 MAX_OFFSET 上限，
+# 將來筆數成長到截斷時，早期錢包會被誤判成新錢包。
+SEEN_WALLETS_PATH = os.path.join(ROOT, "seen_wallets.json")
+
+# 通知信的暫存檔（不 commit）。有新錢包時才產生，workflow 靠它判斷要不要寄信。
+NOTIFY_HTML_PATH = os.path.join(ROOT, "new_wallets.html")
+NOTIFY_SUBJECT_PATH = os.path.join(ROOT, "new_wallets_subject.txt")
+
+SITE_URL = "https://kcpb-ches.github.io/keelung-polymarket-tracker/"
+
+# 候選人英文 → 中文（與 app.js 的 CANDIDATES 對照表保持一致）
+CANDIDATES_ZH = {
+    "Hsieh Kuo-liang": "謝國樑",
+    "Tung Tzu-wei": "童子瑋",
+    "Other": "其他人選",
+}
 
 
 def http_get_json(url: str):
@@ -119,6 +139,201 @@ def slim_trade(t: dict) -> dict:
     }
 
 
+def cand_zh(title: str) -> str:
+    """候選人英文名 → 中文顯示名"""
+    if title in CANDIDATES_ZH:
+        return CANDIDATES_ZH[title]
+    m = re.match(r"^Candidate ([A-Z])$", title or "")
+    if m:
+        return f"未定人選 {m.group(1)}"
+    return title or "未知"
+
+
+def display_name(t: dict) -> str:
+    """
+    取交易者顯示名稱。部分帳號的 name 是系統自動填的錢包地址字串
+    （例如 0xfBd8C9C22cA76B3662d0e53A4f79719FDC684027-1779347618060），
+    那不是真的暱稱，視為未具名。（與 app.js 的 pickDisplayName 同邏輯）
+    """
+    def clean(v):
+        return v if v and not re.match(r"^0x[a-fA-F0-9]{10,}", v) else ""
+    return clean(t.get("name")) or clean(t.get("pseudonym")) or ""
+
+
+def ts_to_tpe(unix_ts) -> str:
+    try:
+        return datetime.fromtimestamp(int(unix_ts), TZ8).strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return "時間不明"
+
+
+def detect_new_wallets(trades: list, cond_to_cand: dict):
+    """
+    比對名冊，找出這次才第一次出現的錢包。
+
+    回傳 (新錢包清單, 是否為首次建立名冊)。
+    首次建立名冊時會把現有錢包全部登記為已知，且不視為「新錢包」——
+    否則第一次啟用這個功能就會一口氣寄出所有歷史錢包，變成騷擾。
+    """
+    prev = None
+    if os.path.exists(SEEN_WALLETS_PATH):
+        try:
+            with open(SEEN_WALLETS_PATH, encoding="utf-8") as f:
+                prev = json.load(f)
+        except Exception as e:
+            print(f"  ⚠️ 名冊讀取失敗（{e}），這次視為重新建立，不寄信")
+            prev = None
+
+    bootstrap = prev is None
+    seen = dict(prev.get("wallets", {})) if prev else {}
+
+    # 每個錢包的「首筆交易」：由舊到新掃過，第一次遇到的就是最早那筆
+    first_trade = {}
+    for t in sorted(trades, key=lambda x: x.get("timestamp") or 0):
+        w = (t.get("proxyWallet") or "").lower()
+        if w and w not in first_trade:
+            first_trade[w] = t
+
+    new_wallets = []
+    for wallet, t in first_trade.items():
+        if wallet in seen:
+            continue
+        size = float(t.get("size") or 0)
+        price = float(t.get("price") or 0)
+        entry = {
+            "wallet": wallet,
+            "name": display_name(t),
+            "first_seen": ts_to_tpe(t.get("timestamp")),
+            "first_timestamp": t.get("timestamp"),
+            "candidate": cand_zh(cond_to_cand.get(t.get("conditionId"), "")),
+            "outcome": t.get("outcome"),
+            "side": t.get("side"),
+            "size": round(size, 4),
+            "price": round(price, 6),
+            "total": round(size * price, 4),
+            "tx": t.get("transactionHash"),
+        }
+        seen[wallet] = {
+            "first_seen": entry["first_seen"],
+            "name": entry["name"],
+        }
+        if not bootstrap:
+            new_wallets.append(entry)
+
+    new_wallets.sort(key=lambda x: x.get("first_timestamp") or 0)
+
+    write_json_atomic(SEEN_WALLETS_PATH, {
+        "updated_at": datetime.now(TZ8).isoformat(timespec="seconds"),
+        "count": len(seen),
+        "wallets": seen,
+    })
+    return new_wallets, bootstrap
+
+
+def build_notification(new_wallets: list):
+    """產生通知信的主旨與 HTML 內文，寫成檔案供 workflow 讀取。"""
+    n = len(new_wallets)
+    big = [w for w in new_wallets if w["total"] >= 50]
+    subject = f"[基隆盤] {n} 個新錢包進場" + (f"，其中 {len(big)} 筆逾 $50" if big else "")
+
+    rows = []
+    for w in new_wallets:
+        nm = html.escape(w["name"]) if w["name"] else '<i style="color:#888">未具名</i>'
+        side_color = "#1a7f37" if w["side"] == "BUY" else "#cf222e"
+        side_text = "▲ 買進" if w["side"] == "BUY" else "▼ 賣出"
+        outcome_text = "Yes 會當選" if w["outcome"] == "Yes" else "No 不會當選"
+        rows.append(f"""
+        <tr>
+          <td style="padding:10px 12px;border-bottom:1px solid #e6eaef;vertical-align:top">
+            <div style="font-weight:600;font-size:15px">{nm}</div>
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#59636e;margin-top:3px">
+              {html.escape(w['wallet'])}
+            </div>
+            <div style="font-size:12px;margin-top:6px">
+              <a href="https://polygonscan.com/address/{html.escape(w['wallet'])}"
+                 style="color:#0969da;text-decoration:none">Polygonscan ↗</a>
+              &nbsp;·&nbsp;
+              <a href="https://polymarket.com/profile/{html.escape(w['wallet'])}"
+                 style="color:#0969da;text-decoration:none">Polymarket ↗</a>
+              &nbsp;·&nbsp;
+              <a href="https://polygonscan.com/tx/{html.escape(w['tx'] or '')}"
+                 style="color:#0969da;text-decoration:none">交易紀錄 ↗</a>
+            </div>
+          </td>
+          <td style="padding:10px 12px;border-bottom:1px solid #e6eaef;vertical-align:top;font-size:13px">
+            <div style="color:{side_color};font-weight:650">{side_text}</div>
+            <div style="margin-top:3px">{html.escape(w['candidate'])}</div>
+            <div style="color:#59636e;font-size:12px;margin-top:3px">{outcome_text}</div>
+          </td>
+          <td style="padding:10px 12px;border-bottom:1px solid #e6eaef;vertical-align:top;
+                     text-align:right;font-size:13px;white-space:nowrap">
+            <div style="font-size:17px;font-weight:680">${w['total']:,.2f}</div>
+            <div style="color:#59636e;font-size:12px;margin-top:3px">
+              {w['size']:,.2f} 股 @ {w['price']:.3f}
+            </div>
+          </td>
+          <td style="padding:10px 12px;border-bottom:1px solid #e6eaef;vertical-align:top;
+                     font-size:12px;color:#59636e;white-space:nowrap">
+            {html.escape(w['first_seen'])}
+          </td>
+        </tr>""")
+
+    # 必須是完整 HTML 文件並宣告 charset，否則中文在部分郵件用戶端會變亂碼
+    body = f"""<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{html.escape(subject)}</title>
+</head>
+<body style="margin:0;padding:20px;background:#ffffff">
+<div style="font-family:-apple-system,'PingFang TC','Noto Sans TC',sans-serif;
+            max-width:820px;margin:0 auto;color:#1f2328;line-height:1.6">
+  <h2 style="margin:0 0 4px;font-size:19px">基隆市長選舉賭盤：{n} 個新錢包進場</h2>
+  <p style="margin:0 0 18px;color:#59636e;font-size:13px">
+    偵測時間 {datetime.now(TZ8).strftime('%Y-%m-%d %H:%M:%S')}（台北時間）
+    ｜ 以下錢包在此賭盤從未出現過
+  </p>
+
+  <table style="width:100%;border-collapse:collapse;border:1px solid #d8dee4;border-radius:8px">
+    <thead>
+      <tr style="background:#f6f8fa">
+        <th style="padding:9px 12px;text-align:left;font-size:12px;color:#59636e;
+                   border-bottom:1px solid #d8dee4">交易者 / 錢包</th>
+        <th style="padding:9px 12px;text-align:left;font-size:12px;color:#59636e;
+                   border-bottom:1px solid #d8dee4">首筆動作</th>
+        <th style="padding:9px 12px;text-align:right;font-size:12px;color:#59636e;
+                   border-bottom:1px solid #d8dee4">金額</th>
+        <th style="padding:9px 12px;text-align:left;font-size:12px;color:#59636e;
+                   border-bottom:1px solid #d8dee4">時間</th>
+      </tr>
+    </thead>
+    <tbody>{''.join(rows)}</tbody>
+  </table>
+
+  <p style="margin:20px 0 0">
+    <a href="{SITE_URL}" style="display:inline-block;background:#0969da;color:#fff;
+       padding:9px 18px;border-radius:7px;text-decoration:none;font-size:14px;font-weight:600">
+      開啟監控頁面
+    </a>
+  </p>
+
+  <p style="margin:22px 0 0;padding-top:14px;border-top:1px solid #e6eaef;
+            font-size:11.5px;color:#818b98">
+    顯示名稱為使用者在 Polymarket 上的公開暱稱，非實名；錢包地址為 Polymarket 代管的
+    proxy 合約錢包，不等於原始 EOA。本信由 GitHub Actions 自動發送。
+  </p>
+</div>
+</body>
+</html>"""
+
+    with open(NOTIFY_HTML_PATH, "w", encoding="utf-8") as f:
+        f.write(body)
+    with open(NOTIFY_SUBJECT_PATH, "w", encoding="utf-8") as f:
+        f.write(subject)
+    return subject
+
+
 def write_json_atomic(path: str, payload: dict):
     """先寫 .tmp 再 rename，避免前端讀到寫到一半的檔案"""
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -191,8 +406,31 @@ def main() -> int:
            if prev_count is not None else ""))
     for k, v in sorted(by_cand.items(), key=lambda x: -x[1]):
         print(f"    {k:<20} {v:>5} 筆")
+
+    # ── 新錢包偵測 ────────────────────────────────────────────
+    # 舊的通知檔先清掉，避免上一輪殘留導致重複寄信
+    for p in (NOTIFY_HTML_PATH, NOTIFY_SUBJECT_PATH):
+        if os.path.exists(p):
+            os.remove(p)
+
+    new_wallets, bootstrap = detect_new_wallets(trades, cond_to_name)
+    print()
+    if bootstrap:
+        wallet_count = len({(t.get("proxyWallet") or "").lower()
+                            for t in trades if t.get("proxyWallet")})
+        print(f"[名冊] 首次建立，已登記 {wallet_count} 個既有錢包為基準線（不寄信）")
+    elif new_wallets:
+        subject = build_notification(new_wallets)
+        print(f"[新錢包] 偵測到 {len(new_wallets)} 個，已產生通知信：{subject}")
+        for w in new_wallets:
+            nm = w["name"] or "未具名"
+            print(f"    {nm:<22} {w['wallet']}  ${w['total']:,.2f}  {w['first_seen']}")
+    else:
+        print("[新錢包] 無，不寄信")
+
     print(f"\n已寫入：{DATA_PATH}")
     print(f"　　　　{os.path.join(SNAPSHOT_DIR, f'{now:%Y-%m-%d}.json')}")
+    print(f"　　　　{SEEN_WALLETS_PATH}")
     return 0
 
 

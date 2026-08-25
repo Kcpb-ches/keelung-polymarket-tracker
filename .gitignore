@@ -18,6 +18,10 @@ venv/
 # 原子寫入的暫存檔（正常情況下不會留下，異常中斷時可能殘留）
 *.tmp
 
+# 通知信的暫存檔，只在偵測到新錢包時產生，用完即丟，不該進版控
+new_wallets.html
+new_wallets_subject.txt
+
 # 編輯器
 .vscode/
 .idea/

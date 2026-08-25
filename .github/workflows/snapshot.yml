@@ -30,11 +30,14 @@ jobs:
       - name: 抓取快照
         run: python3 scripts/snapshot.py
 
+      # 先存檔再寄信：萬一寄信失敗，資料至少已經保住，網站不會因為
+      # 郵件設定的問題而拿到過期快照。寄信失敗會讓整個 workflow 標記為失敗，
+      # GitHub 會另外寄「執行失敗」通知，所以不會默默漏掉。
       - name: 有變動才 commit
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data.json snapshots/
+          git add data.json snapshots/ seen_wallets.json
           if git diff --staged --quiet; then
             echo "資料沒有變化，跳過 commit"
           else
@@ -42,3 +45,31 @@ jobs:
             git commit -m "snapshot: ${COUNT} 筆成交 @ $(TZ=Asia/Taipei date '+%Y-%m-%d %H:%M')"
             git push
           fi
+
+      # snapshot.py 只在偵測到新錢包時才產生 new_wallets.html，
+      # 所以這個檔案存在與否就是「要不要寄信」的判斷依據。
+      - name: 讀取通知內容
+        id: notify
+        run: |
+          if [ -f new_wallets.html ]; then
+            echo "send=true" >> "$GITHUB_OUTPUT"
+            echo "subject=$(cat new_wallets_subject.txt)" >> "$GITHUB_OUTPUT"
+          else
+            echo "send=false" >> "$GITHUB_OUTPUT"
+            echo "沒有新錢包，不寄信"
+          fi
+
+      - name: 寄送新錢包通知
+        if: steps.notify.outputs.send == 'true'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          from: 基隆盤監控 <${{ secrets.MAIL_USERNAME }}>
+          to: ${{ secrets.MAIL_TO || secrets.MAIL_USERNAME }}
+          subject: ${{ steps.notify.outputs.subject }}
+          html_body: file://new_wallets.html
+          convert_markdown: false
