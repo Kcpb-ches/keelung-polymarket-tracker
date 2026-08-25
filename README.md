@@ -60,10 +60,12 @@ keelung_polymarket/
 ├── scripts/
 │   └── snapshot.py                抓取腳本（純標準庫，不用 pip install）
 │
+├── seen_wallets.json              ← 已知錢包名冊，新錢包偵測的依據
+│
 ├── snapshots/
 │   └── YYYY-MM-DD.json            每天一份存檔，做歷史留存
 │
-└── .github/workflows/snapshot.yml GitHub Actions 排程（每 3 小時）
+└── .github/workflows/snapshot.yml GitHub Actions 排程（每 3 小時）＋ 寄信
 ```
 
 ---
@@ -111,6 +113,52 @@ python3 scripts/snapshot.py
 
 所有錢包地址都可以點擊：連到 Polygonscan 看鏈上紀錄，或連到 Polymarket 個人頁。
 滑鼠移到地址上會出現複製按鈕。
+
+---
+
+## 新錢包進場的郵件通知
+
+每次抓完資料後，比對 `seen_wallets.json` 名冊，**出現從未見過的錢包就寄信**。
+信裡列出每個新錢包的首筆動作（押哪位候選人、買賣、Yes/No、股數、成交價、金額），
+以及 Polygonscan 地址、Polymarket 個人頁、該筆交易三個直達連結。
+
+主旨會標註筆數，首筆金額超過 $50 的會加註「其中 N 筆逾 $50」，
+讓人從手機通知欄就能判斷輕重。
+
+### 需要的 GitHub Secret
+
+| 名稱 | 內容 | 必填 |
+|---|---|---|
+| `MAIL_USERNAME` | 寄件的 Gmail 地址 | 是 |
+| `MAIL_PASSWORD` | Google **應用程式密碼**（16 碼，不是登入密碼） | 是 |
+| `MAIL_TO` | 收件地址 | 否，預設寄給自己 |
+
+應用程式密碼在 <https://myaccount.google.com/apppasswords> 產生（需先開兩步驟驗證），
+只能用來寄信，隨時可撤銷。設定方式：
+
+```bash
+gh secret set MAIL_USERNAME --body "你的信箱@gmail.com"
+gh secret set MAIL_PASSWORD          # 執行後貼上 16 碼
+```
+
+### 寄測試信
+
+到 Actions → snapshot → **Run workflow**，勾選「寄一封測試信」。
+
+它會拿**最近進場的錢包**組一封標示為測試的信寄出，內容格式與真實通知完全相同——
+測試信長什麼樣，真信就長什麼樣。**不會動到名冊**，可以放心重複測試。
+換信箱、或懷疑通知壞掉時都用這個驗證。
+
+### 為什麼名冊要獨立成一個檔
+
+不從 `data.json` 反推「看過哪些錢包」，是因為 `data.json` 有 `MAX_OFFSET`（10000 筆）上限。
+將來筆數成長到會截斷時，早期的錢包會從資料裡消失，被誤判成新錢包而爆寄一整批信。
+
+名冊不存在或內容損毀時，程式會**重建基準線並跳過寄信**。
+否則第一次啟用這個功能就會一口氣寄出所有歷史錢包，變成騷擾。
+
+要重新建立基準線（例如想把現況全部視為「已知」），刪掉 `seen_wallets.json`
+再跑一次即可，該次不會寄信。
 
 ---
 
@@ -170,7 +218,9 @@ const CANDIDATES = {
 | 什麼 | 多久一次 | 改哪裡 |
 |---|---|---|
 | 網頁自動重抓 | 5 分鐘 | `app.js` 的 `REFRESH_INTERVAL` |
-| Actions 抓快照 | 3 小時 | `.github/workflows/snapshot.yml` 的 `cron` |
+| Actions 抓快照＋檢查新錢包 | 3 小時 | `.github/workflows/snapshot.yml` 的 `cron` |
+
+也就是說**新錢包通知最慢會延遲 3 小時**。選前想更即時就把 cron 調密一點。
 
 這個盤十天才約 40 筆成交，抓太密只是重複拿同一份資料，
 還會讓 repo 累積大量內容相同、只有時間戳不同的 commit。
