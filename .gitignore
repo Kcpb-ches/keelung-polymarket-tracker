@@ -1,0 +1,24 @@
+# ── 個人工作檔案，不上傳公開 repo ──────────────────────────
+# 這些是承辦人的研究資料與整理產出，留在本機即可，網站不需要它們。
+polymarket-api-notes*.md
+*.xlsx
+*.xlsm
+*.docx
+*.pdf
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 原子寫入的暫存檔（正常情況下不會留下，異常中斷時可能殘留）
+*.tmp
+
+# 編輯器
+.vscode/
+.idea/
+*.swp

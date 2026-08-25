@@ -1,0 +1,43 @@
+# 這個 workflow 跑在 GitHub 的機器上（美國），不受台灣 IP 封鎖影響。
+# 它負責定時抓資料並 commit 回 repo，讓沒有 VPN 的人也能在網頁上看到資料。
+
+name: snapshot
+
+on:
+  schedule:
+    # 每小時的第 5 分鐘執行一次（UTC）。GitHub 的排程常有數分鐘延遲，屬正常現象。
+    - cron: '5 * * * *'
+  workflow_dispatch:        # 允許在 Actions 頁面手動觸發
+
+permissions:
+  contents: write           # 需要寫入權限才能 commit 快照
+
+concurrency:
+  group: snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 抓取快照
+        run: python3 scripts/snapshot.py
+
+      - name: 有變動才 commit
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data.json snapshots/
+          if git diff --staged --quiet; then
+            echo "資料沒有變化，跳過 commit"
+          else
+            COUNT=$(python3 -c "import json;print(json.load(open('data.json'))['total_trades'])")
+            git commit -m "snapshot: ${COUNT} 筆成交 @ $(TZ=Asia/Taipei date '+%Y-%m-%d %H:%M')"
+            git push
+          fi

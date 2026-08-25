@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>2026 基隆市長選舉 · Polymarket 下注監控</title>
+  <!-- ⚠️ 改完 app.js / style.css 記得把下面兩個 ?v= 的數字加一，否則瀏覽器會一直用舊的快取版本 -->
+  <link rel="stylesheet" href="style.css?v=2">
+</head>
+<body>
+
+<header>
+  <div class="container header-bar">
+    <div class="header-left">
+      <h1>2026 基隆市長選舉 · Polymarket 下注監控</h1>
+      <div class="meta">
+        <span id="sourceBadge" class="badge badge-loading">連線中…</span>
+        <span class="dot">•</span>
+        <span id="lastUpdate">載入中…</span>
+        <span class="dot">•</span>
+        <span id="totalCount">0</span> 筆成交
+        <span class="dot">•</span>
+        <span class="auto-refresh">每 30 秒自動更新</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <button id="refreshBtn" class="icon-btn" title="立即重新整理" aria-label="重新整理">↻</button>
+      <button id="themeToggle" class="icon-btn" title="切換日/夜模式" aria-label="切換主題">🌙</button>
+    </div>
+  </div>
+</header>
+
+<!-- 資料來源警示（僅在快照模式或連線失敗時出現） -->
+<div id="sourceNotice" class="notice container" style="display:none;"></div>
+
+<!-- 候選人賠率卡 -->
+<section class="stats container" id="statsCards">
+  <div class="loading">載入盤口中…</div>
+</section>
+
+<!-- 篩選列 -->
+<nav class="filters container">
+  <div class="filter-row">
+    <div class="search-pill">
+      <span class="search-icon">🔍</span>
+      <input id="search" type="text" placeholder="輸入顯示名稱 / 錢包地址 / 交易 Hash 進入查詢模式">
+      <button id="searchClear" type="button" title="清除搜尋" style="display:none;" aria-label="清除">✕</button>
+    </div>
+  </div>
+
+  <div class="filter-row">
+    <!-- 候選人 -->
+    <div class="pill-dropdown" data-pill="cand">
+      <button class="pill-trigger" type="button">
+        <span class="pill-text">候選人</span><span class="pill-caret">⌄</span>
+      </button>
+      <div class="pill-panel">
+        <div class="check-list" id="candCheckList"></div>
+        <div class="panel-actions">
+          <button class="btn-reset" type="button" data-reset="cand">重設</button>
+          <button class="btn-confirm" type="button" data-confirm>確認</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 方向 -->
+    <div class="pill-dropdown" data-pill="side">
+      <button class="pill-trigger" type="button">
+        <span class="pill-text">買賣</span><span class="pill-caret">⌄</span>
+      </button>
+      <div class="pill-panel">
+        <div class="check-list">
+          <label class="check-item"><input type="checkbox" data-side-check value="BUY"><span>▲ BUY 買進</span></label>
+          <label class="check-item"><input type="checkbox" data-side-check value="SELL"><span>▼ SELL 賣出</span></label>
+        </div>
+        <div class="panel-actions">
+          <button class="btn-reset" type="button" data-reset="side">重設</button>
+          <button class="btn-confirm" type="button" data-confirm>確認</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 押注方向 Yes/No -->
+    <div class="pill-dropdown" data-pill="outcome">
+      <button class="pill-trigger" type="button">
+        <span class="pill-text">押注</span><span class="pill-caret">⌄</span>
+      </button>
+      <div class="pill-panel">
+        <div class="check-list">
+          <label class="check-item"><input type="checkbox" data-outcome-check value="Yes"><span>Yes 會當選</span></label>
+          <label class="check-item"><input type="checkbox" data-outcome-check value="No"><span>No 不會當選</span></label>
+        </div>
+        <div class="panel-actions">
+          <button class="btn-reset" type="button" data-reset="outcome">重設</button>
+          <button class="btn-confirm" type="button" data-confirm>確認</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 金額 -->
+    <div class="pill-dropdown" data-pill="amount">
+      <button class="pill-trigger" type="button">
+        <span class="pill-text">金額</span><span class="pill-caret">⌄</span>
+      </button>
+      <div class="pill-panel">
+        <div class="amount-inputs">
+          <input id="minUsd" type="number" min="0" step="0.01" placeholder="最小 USD">
+          <span class="amount-sep">—</span>
+          <input id="maxUsd" type="number" min="0" step="0.01" placeholder="最大 USD">
+        </div>
+        <div class="panel-actions">
+          <button class="btn-reset" type="button" data-reset="amount">重設</button>
+          <button class="btn-confirm" type="button" data-confirm>確認</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 日期 -->
+    <div class="pill-dropdown" data-pill="date">
+      <button class="pill-trigger" type="button">
+        <span class="pill-text">日期</span><span class="pill-caret">⌄</span>
+      </button>
+      <div class="pill-panel">
+        <div class="amount-inputs">
+          <input id="dateStart" type="date">
+          <span class="amount-sep">—</span>
+          <input id="dateEnd" type="date">
+        </div>
+        <div class="panel-hint">時間以台北時間（UTC+8）計算</div>
+        <div class="panel-actions">
+          <button class="btn-reset" type="button" data-reset="date">重設</button>
+          <button class="btn-confirm" type="button" data-confirm>確認</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="view-switch" role="group" aria-label="檢視模式">
+      <button class="view-btn" data-view="table" type="button">📋 表格</button>
+      <button class="view-btn" data-view="feed" type="button">📰 動態</button>
+      <button class="view-btn" data-view="wallet" type="button">👛 錢包</button>
+    </div>
+    <button class="ghost-btn" type="button" id="downloadCsv" title="下載目前篩選結果為 CSV">⬇ CSV</button>
+  </div>
+</nav>
+
+<!-- 查詢模式統計 -->
+<section class="query-summary container" id="querySummary" style="display:none;"></section>
+
+<main class="feed container" id="feed">
+  <div class="loading">載入中…</div>
+</main>
+
+<footer class="container">
+  <p>
+    資料來源：Polymarket Gamma API（盤口賠率）＋ Data API（成交明細）　｜　Event ID 848410　｜　時間為台北時間 UTC+8
+  </p>
+  <p class="footer-warn">
+    顯示名稱與 pseudonym 為使用者在 Polymarket 上的公開暱稱，非實名；
+    錢包地址為 Polymarket 代管的 proxy 合約錢包，不等於原始 EOA。僅供研究參考，非投資建議。
+  </p>
+</footer>
+
+<script src="app.js?v=2"></script>
+</body>
+</html>
