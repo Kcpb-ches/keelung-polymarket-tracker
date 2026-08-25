@@ -5,8 +5,9 @@ name: snapshot
 
 on:
   schedule:
-    # 每小時的第 5 分鐘執行一次（UTC）。GitHub 的排程常有數分鐘延遲，屬正常現象。
-    - cron: '5 * * * *'
+    # 每 3 小時的第 5 分鐘執行一次（UTC）。GitHub 的排程常有數分鐘延遲，屬正常現象。
+    # 這個盤成交稀疏，抓太頻繁只會讓 repo 累積大量內容相同、只有時間戳不同的 commit。
+    - cron: '5 */3 * * *'
   workflow_dispatch:        # 允許在 Actions 頁面手動觸發
 
 permissions:

@@ -10,7 +10,7 @@
 
 // 版號跟 index.html 的 ?v= 對應。若 console 印出的版號跟你剛改的不一樣，
 // 代表瀏覽器讀的是快取的舊檔，按 Cmd+Shift+R 強制重新載入。
-const APP_VERSION = 4;
+const APP_VERSION = 5;
 console.log(`[基隆選舉監控] app.js v${APP_VERSION}`);
 
 // ── 設定 ────────────────────────────────────────────────────
@@ -18,7 +18,9 @@ const EVENT_ID         = 848410;
 const GAMMA_API        = 'https://gamma-api.polymarket.com';
 const DATA_API         = 'https://data-api.polymarket.com';
 const SNAPSHOT_URL     = 'data.json';
-const REFRESH_INTERVAL = 30000;   // 30 秒
+const REFRESH_INTERVAL = 300000;  // 5 分鐘。這個盤成交稀疏（十天約 40 筆），
+                                  // 刷得再密也只是重複抓同一份資料。
+                                  // 想看當下最新隨時可按右上角的 ↻ 手動更新。
 const LIVE_TIMEOUT     = 8000;    // 直連逾時（毫秒），逾時就改走快照
 const RETRY_ATTEMPTS   = 3;       // 直連失敗時的重試次數（含第一次）
 const RETRY_DELAY      = 700;     // 重試間隔（毫秒）
