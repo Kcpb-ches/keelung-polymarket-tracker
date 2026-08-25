@@ -10,7 +10,7 @@
 
 // 版號跟 index.html 的 ?v= 對應。若 console 印出的版號跟你剛改的不一樣，
 // 代表瀏覽器讀的是快取的舊檔，按 Cmd+Shift+R 強制重新載入。
-const APP_VERSION = 2;
+const APP_VERSION = 3;
 console.log(`[基隆選舉監控] app.js v${APP_VERSION}`);
 
 // ── 設定 ────────────────────────────────────────────────────
@@ -20,6 +20,8 @@ const DATA_API         = 'https://data-api.polymarket.com';
 const SNAPSHOT_URL     = 'data.json';
 const REFRESH_INTERVAL = 30000;   // 30 秒
 const LIVE_TIMEOUT     = 8000;    // 直連逾時（毫秒），逾時就改走快照
+const RETRY_ATTEMPTS   = 3;       // 直連失敗時的重試次數（含第一次）
+const RETRY_DELAY      = 700;     // 重試間隔（毫秒）
 const TRADE_PAGE_SIZE  = 500;     // 每次向 API 要幾筆
 const MAX_TRADES       = 10000;   // Data API 的 offset 上限
 const EARLY_WINDOW_H   = 24;      // 開盤後幾小時內進場算「早期交易者」
@@ -114,15 +116,36 @@ function fetchJson(url, timeout = LIVE_TIMEOUT) {
     .finally(() => clearTimeout(timer));
 }
 
+/**
+ * 帶重試的 fetchJson。
+ * 透過 VPN 連線時，對某個網域的第一個請求偶爾會失敗一次（連線冷啟動），
+ * 若不重試就會誤判成「被封鎖」而整頁降級到快照模式。
+ */
+async function fetchJsonRetry(url, attempts = RETRY_ATTEMPTS) {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fetchJson(url);
+    } catch (e) {
+      lastErr = e;
+      if (i < attempts - 1) {
+        console.warn(`[重試 ${i + 1}/${attempts - 1}] ${url.split('?')[0]} — ${e.message}`);
+        await new Promise((r) => setTimeout(r, RETRY_DELAY));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 /** 直連：抓 event 盤口 + 全部成交明細 */
 async function loadLive() {
-  const evArr = await fetchJson(`${GAMMA_API}/events?id=${EVENT_ID}`);
+  const evArr = await fetchJsonRetry(`${GAMMA_API}/events?id=${EVENT_ID}`);
   const ev = Array.isArray(evArr) ? evArr[0] : evArr;
   if (!ev) throw new Error('event 不存在');
 
   const trades = [];
   for (let offset = 0; offset < MAX_TRADES; offset += TRADE_PAGE_SIZE) {
-    const batch = await fetchJson(
+    const batch = await fetchJsonRetry(
       `${DATA_API}/trades?eventId=${EVENT_ID}&takerOnly=true&limit=${TRADE_PAGE_SIZE}&offset=${offset}`);
     if (!Array.isArray(batch) || batch.length === 0) break;
     trades.push(...batch);
