@@ -10,7 +10,7 @@
 
 // 版號跟 index.html 的 ?v= 對應。若 console 印出的版號跟你剛改的不一樣，
 // 代表瀏覽器讀的是快取的舊檔，按 Cmd+Shift+R 強制重新載入。
-const APP_VERSION = 5;
+const APP_VERSION = 6;
 console.log(`[基隆選舉監控] app.js v${APP_VERSION}`);
 
 // ── 設定 ────────────────────────────────────────────────────
@@ -107,6 +107,13 @@ function candInfo(title) {
 function polygonscanTx(h)      { return `https://polygonscan.com/tx/${h}`; }
 function polygonscanAddr(a)    { return `https://polygonscan.com/address/${a}`; }
 function polymarketProfile(a)  { return `https://polymarket.com/profile/${a}`; }
+
+/**
+ * relay.link 的跨鏈轉帳查詢。
+ * Polymarket 跑在 Polygon 上，抵押資產多半是橋接生成的 USDC.e 而非原生 USDC，
+ * 要回溯資金的原始來源鏈就得查跨鏈橋紀錄。
+ */
+function relayLinkAddr(a)      { return `https://relay.link/transactions?address=${a}`; }
 
 // ── 資料抓取 ────────────────────────────────────────────────
 
@@ -523,6 +530,7 @@ function renderTable(rows) {
         ${th('name', '交易者')}
         <th>錢包地址</th>
         <th>交易 Hash</th>
+        <th>跨鏈金流</th>
       </tr></thead>
       <tbody>
         ${rows.map((t) => `
@@ -544,6 +552,10 @@ function renderTable(rows) {
             <td class="mono">
               <a class="link" href="${polygonscanTx(t.hash)}" target="_blank" rel="noopener" title="${t.hash}">${shortHash(t.hash)}</a>
               ${copyBtn(t.hash, '複製 Hash')}
+            </td>
+            <td>
+              <a class="link" href="${relayLinkAddr(t.wallet)}" target="_blank" rel="noopener"
+                 title="在 relay.link 查這個錢包的跨鏈轉帳紀錄（回溯 USDC.e 的來源鏈）">Relay ↗</a>
             </td>
           </tr>`).join('')}
       </tbody>
