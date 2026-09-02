@@ -3,16 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>2026 基隆市長選舉 · Polymarket 下注監控</title>
+  <title>2026 地方選舉 · Polymarket 下注監控</title>
   <!-- ⚠️ 改完 app.js / style.css 記得把下面兩個 ?v= 的數字加一，否則瀏覽器會一直用舊的快取版本 -->
-  <link rel="stylesheet" href="style.css?v=7">
+  <link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
 
 <header>
   <div class="container header-bar">
     <div class="header-left">
-      <h1>2026 基隆市長選舉 · Polymarket 下注監控</h1>
+      <h1 id="pageTitle">2026 基隆市長選舉 · Polymarket 下注</h1>
       <div class="meta">
         <span id="sourceBadge" class="badge badge-loading">連線中…</span>
         <span class="dot">•</span>
@@ -28,6 +28,13 @@
       <button id="themeToggle" class="icon-btn" title="切換日/夜模式" aria-label="切換主題">🌙</button>
     </div>
   </div>
+
+  <!-- 縣市頁簽（由 app.js 依 EVENTS 設定表渲染） -->
+  <nav class="city-tabs-wrap">
+    <div class="container">
+      <div class="city-tabs" id="cityTabs" role="tablist" aria-label="縣市"></div>
+    </div>
+  </nav>
 </header>
 
 <!-- 資料來源警示（僅在快照模式或連線失敗時出現） -->
@@ -154,7 +161,7 @@
 
 <footer class="container">
   <p>
-    資料來源：Polymarket Gamma API（盤口賠率）＋ Data API（成交明細）　｜　Event ID 848410　｜　時間為台北時間 UTC+8
+    資料來源：Polymarket Gamma API（盤口賠率）＋ Data API（成交明細）　｜　時間為台北時間 UTC+8
   </p>
   <p class="footer-warn">
     顯示名稱與 pseudonym 為使用者在 Polymarket 上的公開暱稱，非實名；
@@ -162,6 +169,6 @@
   </p>
 </footer>
 
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>

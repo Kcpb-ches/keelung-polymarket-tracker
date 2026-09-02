@@ -1,26 +1,25 @@
 /* ============================================================
-   2026 基隆市長選舉 · Polymarket 下注監控
+   2026 台灣地方選舉 · Polymarket 下注監控
    ------------------------------------------------------------
+   多縣市版：頂端頁簽切換，每個縣市對應一個 Polymarket event。
+
    資料來源雙軌：
      1) 直連 Polymarket API（需能連到 polymarket.com，台灣可能被擋 → 需 VPN）
-     2) 直連失敗時自動改讀同目錄的 data.json 快照（由 GitHub Actions 產生）
+     2) 直連失敗時自動改讀 data-<eventId>.json 快照（由 GitHub Actions 產生）
    ============================================================ */
 
 'use strict';
 
 // 版號跟 index.html 的 ?v= 對應。若 console 印出的版號跟你剛改的不一樣，
 // 代表瀏覽器讀的是快取的舊檔，按 Cmd+Shift+R 強制重新載入。
-const APP_VERSION = 7;
-console.log(`[基隆選舉監控] app.js v${APP_VERSION}`);
+const APP_VERSION = 8;
+console.log(`[選舉賭盤監控] app.js v${APP_VERSION}`);
 
 // ── 設定 ────────────────────────────────────────────────────
-const EVENT_ID         = 848410;
 const GAMMA_API        = 'https://gamma-api.polymarket.com';
 const DATA_API         = 'https://data-api.polymarket.com';
-const SNAPSHOT_URL     = 'data.json';
-const REFRESH_INTERVAL = 300000;  // 5 分鐘。這個盤成交稀疏（十天約 40 筆），
-                                  // 刷得再密也只是重複抓同一份資料。
-                                  // 想看當下最新隨時可按右上角的 ↻ 手動更新。
+const REFRESH_INTERVAL = 300000;  // 5 分鐘。這些盤成交稀疏，刷得再密也只是重複
+                                  // 抓同一份資料。想看當下最新可按右上角的 ↻。
 const LIVE_TIMEOUT     = 8000;    // 直連逾時（毫秒），逾時就改走快照
 const RETRY_ATTEMPTS   = 3;       // 直連失敗時的重試次數（含第一次）
 const RETRY_DELAY      = 700;     // 重試間隔（毫秒）
@@ -28,13 +27,92 @@ const TRADE_PAGE_SIZE  = 500;     // 每次向 API 要幾筆
 const MAX_TRADES       = 10000;   // Data API 的 offset 上限
 const EARLY_WINDOW_H   = 24;      // 開盤後幾小時內進場算「早期交易者」
 
-// 候選人英文 → 中文 / 政黨對照
-// ⚠️ Polymarket 只給英文拼音，中文為人工對照，如有誤請直接改這裡
-const CANDIDATES = {
-  'Hsieh Kuo-liang': { zh: '謝國樑', party: 'kmt', partyZh: '國民黨' },
-  'Tung Tzu-wei':    { zh: '童子瑋', party: 'dpp', partyZh: '民進黨' },
-  'Other':           { zh: '其他人選', party: 'tbd', partyZh: '' },
-};
+/**
+ * 各縣市賭盤設定。要新增縣市就在這裡加一筆，其餘程式碼完全不用動。
+ *
+ * ⚠️ 中文名一律以這張表為準，不要用 Polymarket 網站上的中文翻譯——
+ *    他們的 zh-hant 是機器翻譯且有誤（例如把 Magistrate／縣長 譯成「治安法官」）。
+ *    這裡的中文是人工對照 API 回傳的英文拼音（groupItemTitle）而來。
+ *
+ * ⚠️ party 只填確定的，沒把握的一律留空（顯示為中性灰）。
+ *    寧可不標，也不要標錯——標錯會影響判讀。要補就直接改這裡。
+ */
+const EVENTS = [
+  {
+    id: 848410, slug: 'keelung', city: '基隆市', office: '市長',
+    candidates: {
+      'Hsieh Kuo-liang': { zh: '謝國樑', party: 'kmt', partyZh: '國民黨' },
+      'Tung Tzu-wei':    { zh: '童子瑋', party: 'dpp', partyZh: '民進黨' },
+    },
+  },
+  {
+    id: 848341, slug: 'taipei', city: '臺北市', office: '市長',
+    candidates: {
+      'Chiang Wan-an': { zh: '蔣萬安', party: 'kmt', partyZh: '國民黨' },
+      'Puma Shen':     { zh: '沈伯洋', party: 'dpp', partyZh: '民進黨' },
+      'Kuo Hsi':       { zh: '郭錫', party: 'tbd', partyZh: '' },
+    },
+  },
+  {
+    id: 848347, slug: 'new-taipei', city: '新北市', office: '市長',
+    candidates: {
+      'Lee Shu-chuan':  { zh: '李四川', party: 'kmt', partyZh: '國民黨' },
+      'Su Chiao-hui':   { zh: '蘇巧慧', party: 'dpp', partyZh: '民進黨' },
+      'Huang Kuo-chang':{ zh: '黃國昌', party: 'tpp', partyZh: '民眾黨' },
+    },
+  },
+  {
+    id: 848370, slug: 'taoyuan', city: '桃園市', office: '市長',
+    candidates: {
+      // ⚠️ API 的英文名是 Chang San-cheng（張善政），Polymarket 中文介面顯示「鄭文燦」。
+      //    兩者是不同人。此處依 Ches 判斷採用「鄭文燦」；政黨因此存疑，留空不標。
+      'Chang San-cheng':  { zh: '鄭文燦', party: 'tbd', partyZh: '' },
+      'Huang Shih-chieh': { zh: '黃世傑', party: 'tbd', partyZh: '' },
+      'Perng Shaw-jiin':  { zh: '彭紹瑾', party: 'tbd', partyZh: '' },
+    },
+  },
+  {
+    id: 848409, slug: 'kaohsiung', city: '高雄市', office: '市長',
+    candidates: {
+      'Lai Jui-lung':   { zh: '賴瑞隆', party: 'dpp', partyZh: '民進黨' },
+      'Ko Chih-en':     { zh: '柯志恩', party: 'kmt', partyZh: '國民黨' },
+      'Chang Ching':    { zh: '張清', party: 'tbd', partyZh: '' },
+      'Hsu Chih-chieh': { zh: '許智傑', party: 'dpp', partyZh: '民進黨' },
+      'Chiu Yi-ying':   { zh: '邱議瑩', party: 'dpp', partyZh: '民進黨' },
+      'Lin Tai-hua':    { zh: '林岱樺', party: 'dpp', partyZh: '民進黨' },
+    },
+  },
+  {
+    id: 848417, slug: 'yilan', city: '宜蘭縣', office: '縣長',
+    candidates: {
+      'Lin Kuo-chang':  { zh: '林國彰', party: 'tbd', partyZh: '' },
+      'Wu Tsung-hsien': { zh: '吳宗憲', party: 'tbd', partyZh: '' },
+      'Chen Wan-hui':   { zh: '陳琬惠', party: 'tbd', partyZh: '' },
+      'Chang Sheng-te': { zh: '張勝得', party: 'tbd', partyZh: '' },
+    },
+  },
+  {
+    id: 848453, slug: 'chiayi-city', city: '嘉義市', office: '市長',
+    candidates: {
+      'Wang Mei-hui':     { zh: '王美惠', party: 'dpp', partyZh: '民進黨' },
+      'Chang Chi-kai':    { zh: '張其楷', party: 'tbd', partyZh: '' },
+      'Weng Shou-liang':  { zh: '翁淑良', party: 'tbd', partyZh: '' },
+      'Huang Hung-cheng': { zh: '黃宏成', party: 'tbd', partyZh: '' },
+      'Chen Chia-ping':   { zh: '陳家平', party: 'tbd', partyZh: '' },
+      'Chen Kai-huang':   { zh: '陳凱煌', party: 'tbd', partyZh: '' },
+    },
+  },
+  {
+    id: 848436, slug: 'miaoli', city: '苗栗縣', office: '縣長',
+    candidates: {
+      'Chung Tung-chin': { zh: '鍾東錦', party: 'tbd', partyZh: '' },
+      'Chen Pin-an':     { zh: '陳品安', party: 'tbd', partyZh: '' },
+    },
+  },
+];
+
+/** 目前選中的縣市。由網址 hash 決定（例如 #taipei），預設基隆。 */
+let activeEvent = EVENTS[0];
 
 // ── 狀態 ────────────────────────────────────────────────────
 let eventMeta   = null;   // { title, startDate, endDate, volume, liquidity }
@@ -98,9 +176,12 @@ function copyBtn(value, label = '複製') {
 }
 
 function candInfo(title) {
-  if (CANDIDATES[title]) return CANDIDATES[title];
+  const table = activeEvent.candidates;
+  if (table[title]) return table[title];
+  if (title === 'Other') return { zh: '其他人選', party: 'tbd', partyZh: '' };
   const m = /^Candidate ([A-Z])$/.exec(title || '');
   if (m) return { zh: `未定人選 ${m[1]}`, party: 'tbd', partyZh: '待定' };
+  // 對照表沒有的名字：顯示英文原文，才不會把不認識的候選人吃掉
   return { zh: title || '未知', party: 'tbd', partyZh: '' };
 }
 
@@ -153,11 +234,11 @@ async function fetchJsonRetry(url, attempts = RETRY_ATTEMPTS) {
  * 直連抓成交明細（Data API）。
  * 這是核心資料，實測從瀏覽器直連相當穩定。
  */
-async function fetchTradesLive() {
+async function fetchTradesLive(eventId) {
   const trades = [];
   for (let offset = 0; offset < MAX_TRADES; offset += TRADE_PAGE_SIZE) {
     const batch = await fetchJsonRetry(
-      `${DATA_API}/trades?eventId=${EVENT_ID}&takerOnly=true&limit=${TRADE_PAGE_SIZE}&offset=${offset}`);
+      `${DATA_API}/trades?eventId=${eventId}&takerOnly=true&limit=${TRADE_PAGE_SIZE}&offset=${offset}`);
     if (!Array.isArray(batch) || batch.length === 0) break;
     trades.push(...batch);
     if (batch.length < TRADE_PAGE_SIZE) break;
@@ -173,16 +254,16 @@ async function fetchTradesLive() {
  * 所以這裡失敗屬於預期內，呼叫端要能改用快照裡的盤口資料，
  * 不可以因此把整頁降級成快照模式。
  */
-async function fetchEventLive() {
-  const evArr = await fetchJsonRetry(`${GAMMA_API}/events?id=${EVENT_ID}`);
+async function fetchEventLive(eventId) {
+  const evArr = await fetchJsonRetry(`${GAMMA_API}/events?id=${eventId}`);
   const ev = Array.isArray(evArr) ? evArr[0] : evArr;
   if (!ev) throw new Error('event 不存在');
   return ev;
 }
 
-/** 備援：讀 GitHub Actions 產生的快照 */
-async function loadSnapshot() {
-  const d = await fetchJson(`${SNAPSHOT_URL}?t=${Date.now()}`, 15000);
+/** 備援：讀 GitHub Actions 產生的快照（每個縣市一支檔） */
+async function loadSnapshot(eventId) {
+  const d = await fetchJson(`data-${eventId}.json?t=${Date.now()}`, 15000);
   if (!d || !d.event) throw new Error('快照格式不正確');
   return { event: d.event, trades: d.trades || [], fetchedAt: Date.parse(d.fetched_at) || null };
 }
@@ -239,7 +320,10 @@ function pickDisplayName(t) {
 function normalizeTrades(raw) {
   return raw.map((t) => {
     const m = marketById[t.conditionId];
-    const info = m || candInfo(t.title ? t.title.replace(/^Will (.+?) win the next Keelung Mayor election\?$/, '$1') : '');
+    // 正常情況下 conditionId 都對得到盤口；對不到時退而從 title 反推候選人名，
+    // 例如 "Will Chiang Wan-an win the next Taipei Mayor election?" → "Chiang Wan-an"
+    const info = m || candInfo(
+      t.title ? t.title.replace(/^Will (.+?) win the next .+? election\?$/, '$1') : '');
     const size = Number(t.size) || 0;
     const price = Number(t.price) || 0;
     const dispName = pickDisplayName(t);
@@ -267,8 +351,17 @@ async function loadData(manual = false) {
   const btn = $('refreshBtn');
   if (manual) btn.classList.add('spinning');
 
+  // 記下這次請求是為了哪個縣市。使用者若在抓取途中切換頁簽，
+  // 回來的舊資料就必須丟棄，否則會把甲縣市的成交畫到乙縣市的畫面上。
+  const reqEvent = activeEvent;
+  const eventId = reqEvent.id;
+
   // 兩個 API 各自獨立嘗試，其中一個失敗不影響另一個
-  const [tradesRes, eventRes] = await Promise.allSettled([fetchTradesLive(), fetchEventLive()]);
+  const [tradesRes, eventRes] = await Promise.allSettled([
+    fetchTradesLive(eventId), fetchEventLive(eventId),
+  ]);
+  if (activeEvent !== reqEvent) return;   // 已經切走了，這份結果作廢
+
   let liveTrades = tradesRes.status === 'fulfilled' ? tradesRes.value : null;
   let liveEvent  = eventRes.status  === 'fulfilled' ? eventRes.value  : null;
 
@@ -279,7 +372,8 @@ async function loadData(manual = false) {
   let snapshot = null;
   if (!liveTrades || !liveEvent) {
     try {
-      snapshot = await loadSnapshot();
+      snapshot = await loadSnapshot(eventId);
+      if (activeEvent !== reqEvent) return;
     } catch (snapErr) {
       if (!liveTrades) {
         console.error('[快照也讀不到]', snapErr.message);
@@ -322,6 +416,61 @@ async function loadData(manual = false) {
 
   firstLoad = false;
   setTimeout(() => btn.classList.remove('spinning'), 300);
+}
+
+// ── 縣市頁簽 ────────────────────────────────────────────────
+
+/** 依網址 hash 決定要開哪個縣市，認不得就回到第一個（基隆） */
+function eventFromHash() {
+  const slug = (location.hash || '').replace(/^#/, '');
+  return EVENTS.find((e) => e.slug === slug) || EVENTS[0];
+}
+
+function renderTabs() {
+  $('cityTabs').innerHTML = EVENTS.map((e) => `
+    <button class="city-tab ${e === activeEvent ? 'active' : ''}" data-slug="${e.slug}" type="button">
+      ${escapeHtml(e.city)}
+    </button>`).join('');
+
+  $('cityTabs').querySelectorAll('.city-tab').forEach((b) => {
+    b.addEventListener('click', () => {
+      if (b.dataset.slug === activeEvent.slug) return;
+      location.hash = b.dataset.slug;   // 交給 hashchange 統一處理
+    });
+  });
+}
+
+/** 切換縣市：把所有跟舊縣市有關的狀態清乾淨，再重新載入 */
+function switchEvent(next) {
+  if (next === activeEvent) return;
+  activeEvent = next;
+
+  markets = [];
+  marketById = {};
+  allTrades = [];
+  prevKeys = new Set();
+  eventMeta = null;
+  snapshotAt = null;
+  tradesSource = oddsSource = 'loading';
+  firstLoad = true;   // 讓新縣市的第一批資料不要被標成「新交易」而閃爍
+
+  // 篩選條件裡的候選人是綁在舊縣市的 conditionId 上，一定要清掉；
+  // 其餘條件（買賣、金額、日期、搜尋）跨縣市仍然合理，予以保留。
+  filters.cands = [];
+  currentPage = 1;
+
+  document.title = `2026 ${next.city}${next.office}選舉 · Polymarket 下注監控`;
+  $('pageTitle').textContent = `2026 ${next.city}${next.office}選舉 · Polymarket 下注`;
+  renderTabs();
+  updatePillLabels();
+
+  $('statsCards').innerHTML = '<div class="loading">載入盤口中…</div>';
+  $('feed').innerHTML = '<div class="loading">載入中…</div>';
+  $('sourceBadge').className = 'badge badge-loading';
+  $('sourceBadge').textContent = '連線中…';
+  $('sourceNotice').style.display = 'none';
+
+  loadData();
 }
 
 // ── 資料來源狀態列 ──────────────────────────────────────────
@@ -758,12 +907,13 @@ function downloadCsv() {
   const rows = applySorting(applyFilters(allTrades));
   if (!rows.length) { alert('目前沒有可匯出的資料'); return; }
 
-  const head = ['時間(台北)', '候選人', '候選人(英文)', '押注', '買賣', '股數', '成交價', '金額USD',
+  // 加上縣市欄，多份 CSV 併在一起時才分得出來源
+  const head = ['縣市', '時間(台北)', '候選人', '候選人(英文)', '押注', '買賣', '股數', '成交價', '金額USD',
                 '交易者', '錢包地址', '交易Hash', 'conditionId'];
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = [head.map(esc).join(',')];
   rows.forEach((t) => lines.push([
-    tpeTime(t.ts), t.cand, t.candEn, t.outcome, t.side,
+    activeEvent.city, tpeTime(t.ts), t.cand, t.candEn, t.outcome, t.side,
     t.size, t.price, t.total.toFixed(4),
     t.isAnon ? '未具名' : t.name, t.wallet, t.hash, t.conditionId,
   ].map(esc).join(',')));
@@ -772,7 +922,7 @@ function downloadCsv() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `基隆市長Polymarket下注紀錄_${tpeTime(Date.now()).replace(/[: ]/g, '-')}.csv`;
+  a.download = `${activeEvent.city}${activeEvent.office}Polymarket下注紀錄_${tpeTime(Date.now()).replace(/[: ]/g, '-')}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
@@ -886,8 +1036,17 @@ function initTheme() {
 }
 
 // ── 啟動 ────────────────────────────────────────────────────
+activeEvent = eventFromHash();
+document.title = `2026 ${activeEvent.city}${activeEvent.office}選舉 · Polymarket 下注監控`;
+$('pageTitle').textContent = `2026 ${activeEvent.city}${activeEvent.office}選舉 · Polymarket 下注`;
+
 initTheme();
 initFilterUI();
+renderTabs();
 updatePillLabels();
+
+// 支援上一頁／下一頁與直接貼帶 hash 的網址
+window.addEventListener('hashchange', () => switchEvent(eventFromHash()));
+
 loadData();
 setInterval(() => loadData(), REFRESH_INTERVAL);

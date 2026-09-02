@@ -95,6 +95,27 @@ h1 { margin: 0 0 4px; font-size: 19px; font-weight: 650; letter-spacing: .2px; }
 .icon-btn.spinning { animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ── 縣市頁簽 ──────────────────────────────────────────── */
+.city-tabs-wrap { border-top: 1px solid var(--border-soft); }
+.city-tabs {
+  display: flex; gap: 2px; overflow-x: auto;
+  scrollbar-width: none;              /* 手機上橫向滑動，不顯示捲軸 */
+}
+.city-tabs::-webkit-scrollbar { display: none; }
+
+.city-tab {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-dim); font-family: inherit;
+  font-size: 13.5px; font-weight: 550; white-space: nowrap;
+  padding: 10px 15px 9px;
+  border-bottom: 2px solid transparent;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.city-tab:hover { color: var(--text); background: var(--bg-hover); }
+.city-tab.active {
+  color: var(--accent); border-bottom-color: var(--accent); font-weight: 680;
+}
+
 /* 資料來源徽章 */
 .badge {
   display: inline-flex; align-items: center; gap: 5px;

@@ -47,11 +47,13 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data.json snapshots/ seen_wallets.json
+          git add data-*.json snapshots/ seen_wallets.json
           if git diff --staged --quiet; then
             echo "資料沒有變化，跳過 commit"
           else
-            COUNT=$(python3 -c "import json;print(json.load(open('data.json'))['total_trades'])")
+            COUNT=$(python3 -c "
+import json,glob
+print(sum(json.load(open(f))['total_trades'] for f in glob.glob('data-*.json')))")
             git commit -m "snapshot: ${COUNT} 筆成交 @ $(TZ=Asia/Taipei date '+%Y-%m-%d %H:%M')"
             git push
           fi

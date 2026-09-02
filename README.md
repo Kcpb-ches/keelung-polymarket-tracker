@@ -1,9 +1,23 @@
-# 2026 基隆市長選舉 · Polymarket 下注監控
+# 2026 台灣地方選舉 · Polymarket 下注監控
 
-追蹤 Polymarket 上「Keelung Mayor Election Winner」（Event ID `848410`）這個賭盤的
-即時賠率與每一筆成交明細，包含下單錢包地址、顯示名稱、買賣方向、金額與時間。
+追蹤 Polymarket 上台灣各縣市首長選舉賭盤的即時賠率與每一筆成交明細，
+包含下單錢包地址、顯示名稱、買賣方向、金額與時間。頂端頁簽切換縣市。
 
-盤口 2026-08-14 開盤，2026-11-28 到期。
+目前涵蓋 8 個縣市，全部 2026-11-28 到期：
+
+| 縣市 | Event ID | 網址錨點 |
+|---|---|---|
+| 基隆市 | 848410 | `#keelung` |
+| 臺北市 | 848341 | `#taipei` |
+| 新北市 | 848347 | `#new-taipei` |
+| 桃園市 | 848370 | `#taoyuan` |
+| 高雄市 | 848409 | `#kaohsiung` |
+| 宜蘭縣 | 848417 | `#yilan` |
+| 嘉義市 | 848453 | `#chiayi-city` |
+| 苗栗縣 | 848436 | `#miaoli` |
+
+網址帶錨點可直接開到指定縣市，例如
+<https://kcpb-ches.github.io/keelung-polymarket-tracker/#kaohsiung>。
 
 ---
 
@@ -55,7 +69,7 @@ keelung_polymarket/
 ├── index.html                     前端入口
 ├── app.js                         全部前端邏輯（抓取、篩選、三種視圖、CSV）
 ├── style.css                      樣式（深色為主，可切淺色）
-├── data.json                      ← 最新快照，前端連不到 API 時讀這個
+├── data-<eventId>.json            ← 各縣市最新快照，前端連不到 API 時讀這個
 │
 ├── scripts/
 │   └── snapshot.py                抓取腳本（純標準庫，不用 pip install）
@@ -63,7 +77,7 @@ keelung_polymarket/
 ├── seen_wallets.json              ← 已知錢包名冊，新錢包偵測的依據
 │
 ├── snapshots/
-│   └── YYYY-MM-DD.json            每天一份存檔，做歷史留存
+│   └── YYYY-MM-DD.json            每天一份賠率與統計存檔（不含逐筆明細）
 │
 └── .github/workflows/snapshot.yml GitHub Actions 排程（每 3 小時）＋ 寄信
 ```
@@ -111,19 +125,29 @@ python3 scripts/snapshot.py
 錢包視圖會把**開盤 24 小時內就進場**的錢包標記出來——早期交易者可能有資訊優勢，
 是值得優先看的對象。這個時間窗可以在 `app.js` 的 `EARLY_WINDOW_H` 調整。
 
-所有錢包地址都可以點擊：連到 Polygonscan 看鏈上紀錄，或連到 Polymarket 個人頁。
-滑鼠移到地址上會出現複製按鈕。
+所有錢包地址都可以點擊，三個入口：**Polygonscan**（鏈上紀錄）、
+**Polymarket**（個人頁）、**Relay**（跨鏈轉帳，回溯 USDC.e 的來源鏈）。
+滑鼠移到地址上會出現複製按鈕。表格視圖最右欄也有 Relay 連結。
 
 ---
 
 ## 新錢包進場的郵件通知
 
 每次抓完資料後，比對 `seen_wallets.json` 名冊，**出現從未見過的錢包就寄信**。
-信裡列出每個新錢包的首筆動作（押哪位候選人、買賣、Yes/No、股數、成交價、金額），
-以及 Polygonscan 地址、Polymarket 個人頁、該筆交易三個直達連結。
+八個縣市**合併成一封信**，依縣市分段，不會一次收到八封。
 
-主旨會標註筆數，首筆金額超過 $50 的會加註「其中 N 筆逾 $50」，
-讓人從手機通知欄就能判斷輕重。
+信裡列出每個新錢包的首筆動作（押哪位候選人、買賣、Yes/No、股數、成交價、金額），
+以及 Polygonscan、Polymarket、Relay 三個直達連結。
+
+主旨會標註筆數與涉及幾個縣市，有跨縣市錢包時加註「N 個跨縣市」，
+否則標註金額逾 $50 的筆數，讓人從手機通知欄就能判斷輕重。
+
+### 跨縣市標記
+
+同一個錢包在多個縣市都下注時，信裡會用黃色標籤標出「也出現在 ○○、○○」。
+**這是單一縣市看不出來的模式**，也是最值得優先檢視的訊號。
+
+目前 287 個錢包裡有 **121 個（42%）跨縣市**，其中 2 個錢包八個縣市全押。
 
 ### 需要的 GitHub Secret
 
@@ -149,35 +173,69 @@ gh secret set MAIL_PASSWORD          # 執行後貼上 16 碼
 測試信長什麼樣，真信就長什麼樣。**不會動到名冊**，可以放心重複測試。
 換信箱、或懷疑通知壞掉時都用這個驗證。
 
-### 為什麼名冊要獨立成一個檔
+### 名冊的結構與防呆
 
-不從 `data.json` 反推「看過哪些錢包」，是因為 `data.json` 有 `MAX_OFFSET`（10000 筆）上限。
+`seen_wallets.json` 依 event id 分組，每個縣市各有自己的名冊：
+
+```json
+{ "updated_at": "...", "count": 533,
+  "events": { "848410": { "0xabc…": {"first_seen": "...", "name": "..."} }, ... } }
+```
+
+不從 `data-*.json` 反推「看過哪些錢包」，是因為那些檔有 `MAX_OFFSET`（10000 筆）上限。
 將來筆數成長到會截斷時，早期的錢包會從資料裡消失，被誤判成新錢包而爆寄一整批信。
 
-名冊不存在或內容損毀時，程式會**重建基準線並跳過寄信**。
-否則第一次啟用這個功能就會一口氣寄出所有歷史錢包，變成騷擾。
+**三種情況會靜默建檔、不寄信**，避免一次收到上百封：
 
-要重新建立基準線（例如想把現況全部視為「已知」），刪掉 `seen_wallets.json`
-再跑一次即可，該次不會寄信。
+1. 名冊檔不存在（第一次啟用）
+2. 名冊內容損毀（JSON 壞掉）
+3. **新加入的縣市第一次抓取**
+
+要把某個縣市重設為「全部已知」，把它在 `events` 底下那一段刪掉再跑一次即可。
 
 ---
 
-## 候選人中文對照
+## 縣市與候選人設定
 
-Polymarket 只提供英文拼音，中文是人工對照的。改 `app.js` 最上面這段即可：
+所有縣市與候選人中文名都集中在兩個地方，**要新增縣市就各加一筆，其餘程式碼完全不用動**：
+
+- `app.js` 最上面的 `EVENTS` 陣列（前端顯示用，含政黨配色）
+- `scripts/snapshot.py` 最上面的 `EVENTS` 清單（抓取與通知信用）
 
 ```js
-const CANDIDATES = {
-  'Hsieh Kuo-liang': { zh: '謝國樑', party: 'kmt', partyZh: '國民黨' },
-  'Tung Tzu-wei':    { zh: '童子瑋', party: 'dpp', partyZh: '民進黨' },
-  'Other':           { zh: '其他人選', party: 'tbd', partyZh: '' },
-};
+{
+  id: 848410, slug: 'keelung', city: '基隆市', office: '市長',
+  candidates: {
+    'Hsieh Kuo-liang': { zh: '謝國樑', party: 'kmt', partyZh: '國民黨' },
+    'Tung Tzu-wei':    { zh: '童子瑋', party: 'dpp', partyZh: '民進黨' },
+  },
+},
 ```
 
-這個 event 底下有 **29 個 market**，但只有上面兩位是真的候選人，
-其餘 27 個是 `Candidate A` ～ `Candidate Z` 的佔位盤口（成交量 0、賠率固定 0.5）。
-前端預設把沒人下注的佔位盤口隱藏起來，只在下方標註還有幾個。
-之後若有新人參選、佔位盤口被改成真名，把新名字加進上面的對照表就會自動顯示。
+### ⚠️ 中文名不要用 Polymarket 網站的翻譯
+
+Polymarket 的 zh-hant 介面是**機器翻譯，而且有錯**：
+
+- 宜蘭的標題被譯成「宜蘭縣**治安法官**選舉優勝者」（Magistrate＝縣長）
+- 桃園 94% 那位，API 英文名是 `Chang San-cheng`（張善政），
+  中文介面卻顯示「鄭文燦」——**兩者是不同人**。
+  目前依 Ches 判斷採用「鄭文燦」，程式碼裡有註記，若日後確認有誤改一行即可。
+
+所以中文名一律以設定表為準，人工對照 API 回傳的英文拼音（`groupItemTitle`）。
+
+### 政黨標記
+
+`party` 只填**確定的**，沒把握的一律留空（顯示為中性灰）。
+寧可不標也不要標錯——標錯會影響判讀。目前宜蘭、苗栗、桃園多數候選人未標，
+要補直接改設定表。
+
+### 佔位盤口
+
+每個 event 底下有 29～33 個 market，但真候選人只有 2～6 位，
+其餘是 `Candidate A` ～ `Candidate Z` 的佔位盤（成交量 0、賠率固定 0.5）。
+前端預設隱藏沒人下注的佔位盤，只在下方標註還有幾個。
+之後若有新人參選、佔位盤被改成真名，把名字加進設定表就會自動顯示；
+沒加的話會顯示英文原文，不會被吃掉。
 
 ---
 
@@ -185,8 +243,8 @@ const CANDIDATES = {
 
 | API | 用途 | 認證 |
 |---|---|---|
-| `gamma-api.polymarket.com/events?id=848410` | 盤口賠率、成交量、流動性 | 不需要 |
-| `data-api.polymarket.com/trades?eventId=848410&takerOnly=true` | 每一筆成交明細 | 不需要 |
+| `gamma-api.polymarket.com/events?id=<eventId>` | 盤口賠率、成交量、流動性 | 不需要 |
+| `data-api.polymarket.com/trades?eventId=<eventId>&takerOnly=true` | 每一筆成交明細 | 不需要 |
 
 `takerOnly=true` 很重要：鏈上每筆撮合都有 maker、taker 兩方，
 不加這個參數會把同一筆交易算成兩筆，成交數直接膨脹一倍。
@@ -204,7 +262,7 @@ const CANDIDATES = {
 
 ## 已知限制
 
-- **Data API 的 `offset` 上限是 10000**。這個盤目前才 40 筆，短期內不會碰到；
+- **Data API 的 `offset` 上限是 10000**。目前最大的高雄盤約 480 筆，離上限還很遠；
   真的成長到那個量級時，`snapshot.py` 要改用 `start`/`end` 時間窗分段抓。
 - **GitHub Actions 的 cron 不保證準時。** 實測延遲 **30～106 分鐘**都出現過，
   尖峰時 GitHub 甚至可能把整班排程丟掉不執行——官方文件寫明排程是盡力而為，
@@ -213,7 +271,7 @@ const CANDIDATES = {
   要真正即時就用直連模式（開 VPN），網頁會自己去抓最新的。
 - **改完 `app.js` 或 `style.css` 要記得把 `index.html` 裡的 `?v=` 數字加一**，
   否則瀏覽器會一直用快取的舊版本。
-  網頁載入時 console 會印出 `[基隆選舉監控] app.js v5`，
+  網頁載入時 console 會印出 `[選舉賭盤監控] app.js v8`，
   版號跟你剛改的對不上就是中了快取，按 `Cmd+Shift+R` 強制重新載入。
 
 ## 更新頻率
@@ -225,7 +283,7 @@ const CANDIDATES = {
 
 也就是說**新錢包通知最慢會延遲 3 小時**。選前想更即時就把 cron 調密一點。
 
-這個盤十天才約 40 筆成交，抓太密只是重複拿同一份資料，
+這些盤成交稀疏（八個縣市加起來約 1,400 筆），抓太密只是重複拿同一份資料，
 還會讓 repo 累積大量內容相同、只有時間戳不同的 commit。
 想看當下最新，隨時可以按網頁右上角的 **↻** 手動更新。
 
