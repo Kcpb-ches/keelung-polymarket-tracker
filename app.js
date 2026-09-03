@@ -83,6 +83,23 @@ const EVENTS = [
     },
   },
   {
+    id: 848435, slug: 'hsinchu-city', city: '新竹市', office: '市長',
+    candidates: {
+      'Ann Kao':            { zh: '高虹安', party: 'tpp', partyZh: '民眾黨' },
+      'Chuang Ching-cheng': { zh: '莊敬誠', party: 'tbd', partyZh: '' },
+      'Ho Chih-yung':       { zh: '何志勇', party: 'tbd', partyZh: '' },
+    },
+  },
+  {
+    id: 848418, slug: 'hsinchu-county', city: '新竹縣', office: '縣長',
+    candidates: {
+      'Hsu Hsin-ying':    { zh: '徐欣瑩', party: 'tbd', partyZh: '' },
+      'Cheng Chao-fang':  { zh: '鄭朝方', party: 'dpp', partyZh: '民進黨' },
+      'Lin Szu-ming':     { zh: '林思銘', party: 'kmt', partyZh: '國民黨' },
+      'Chen Chien-hsien': { zh: '陳見賢', party: 'tbd', partyZh: '' },
+    },
+  },
+  {
     id: 848417, slug: 'yilan', city: '宜蘭縣', office: '縣長',
     candidates: {
       'Lin Kuo-chang':  { zh: '林國彰', party: 'tbd', partyZh: '' },

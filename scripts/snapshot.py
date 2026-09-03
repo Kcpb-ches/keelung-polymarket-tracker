@@ -67,6 +67,11 @@ EVENTS = [
     {"id": 848409, "slug": "kaohsiung", "city": "高雄市", "office": "市長", "zh": {
         "Lai Jui-lung": "賴瑞隆", "Ko Chih-en": "柯志恩", "Chang Ching": "張清",
         "Hsu Chih-chieh": "許智傑", "Chiu Yi-ying": "邱議瑩", "Lin Tai-hua": "林岱樺"}},
+    {"id": 848435, "slug": "hsinchu-city", "city": "新竹市", "office": "市長", "zh": {
+        "Ann Kao": "高虹安", "Chuang Ching-cheng": "莊敬誠", "Ho Chih-yung": "何志勇"}},
+    {"id": 848418, "slug": "hsinchu-county", "city": "新竹縣", "office": "縣長", "zh": {
+        "Hsu Hsin-ying": "徐欣瑩", "Cheng Chao-fang": "鄭朝方",
+        "Lin Szu-ming": "林思銘", "Chen Chien-hsien": "陳見賢"}},
     {"id": 848417, "slug": "yilan", "city": "宜蘭縣", "office": "縣長", "zh": {
         "Lin Kuo-chang": "林國彰", "Wu Tsung-hsien": "吳宗憲",
         "Chen Wan-hui": "陳琬惠", "Chang Sheng-te": "張勝得"}},
