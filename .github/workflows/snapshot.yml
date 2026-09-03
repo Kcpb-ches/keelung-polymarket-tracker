@@ -51,9 +51,9 @@ jobs:
           if git diff --staged --quiet; then
             echo "資料沒有變化，跳過 commit"
           else
-            COUNT=$(python3 -c "
-import json,glob
-print(sum(json.load(open(f))['total_trades'] for f in glob.glob('data-*.json')))")
+            # ⚠️ 這行務必保持單行。在 YAML 的 run: | 區塊裡，任何一行縮排歸零
+            #    都會提前結束區塊、讓整個 workflow 檔案無法解析。
+            COUNT=$(python3 -c "import json,glob; print(sum(json.load(open(f))['total_trades'] for f in glob.glob('data-*.json')))")
             git commit -m "snapshot: ${COUNT} 筆成交 @ $(TZ=Asia/Taipei date '+%Y-%m-%d %H:%M')"
             git push
           fi
