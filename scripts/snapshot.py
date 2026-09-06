@@ -24,6 +24,7 @@ import re
 import sys
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 GAMMA_API = "https://gamma-api.polymarket.com"
@@ -43,6 +44,13 @@ SNAPSHOT_DIR = os.path.join(ROOT, "snapshots")
 # 不從 data-*.json 反推，因為那些檔有 MAX_OFFSET 上限，
 # 將來筆數成長到截斷時，早期錢包會被誤判成新錢包而爆寄通知。
 SEEN_WALLETS_PATH = os.path.join(ROOT, "seen_wallets.json")
+
+# 錢包帳號資訊快取（加入時間、全站預測次數），會 commit 進 repo。
+# 前端讀這個檔，所以沒有 VPN 也看得到。
+PROFILES_PATH = os.path.join(ROOT, "wallet-profiles.json")
+PROFILE_WORKERS = 8        # 平行連線數，別調太高以免被限流
+PROFILE_REFRESH = 150      # 每輪最多刷新幾個既有錢包的預測次數
+PROFILE_STALE_H = 24       # 超過幾小時才需要刷新
 
 # 通知信的暫存檔（不 commit）。有新錢包時才產生，workflow 靠它判斷要不要寄信。
 NOTIFY_HTML_PATH = os.path.join(ROOT, "new_wallets.html")
@@ -305,6 +313,96 @@ def save_roster(roster: dict):
     })
 
 
+# ── 錢包帳號資訊 ────────────────────────────────────────────
+
+def fetch_one_profile(wallet: str, need_created: bool) -> dict:
+    """
+    抓單一錢包的帳號資訊。
+
+    created_at（Polymarket 帳號建立時間）不會變，只在第一次抓；
+    traded（全站累計預測次數）會變，每次刷新都重抓。
+    任一支失敗都不讓整輪中斷，缺的欄位留空即可。
+    """
+    out = {}
+    if need_created:
+        try:
+            p = http_get_json(f"{GAMMA_API}/public-profile?address={wallet}")
+            out["created_at"] = p.get("createdAt")
+            out["name"] = p.get("name") or ""
+            out["pseudonym"] = p.get("pseudonym") or ""
+        except Exception:
+            pass
+    try:
+        t = http_get_json(f"{DATA_API}/traded?user={wallet}")
+        out["traded"] = t.get("traded")
+    except Exception:
+        pass
+    return out
+
+
+def update_profiles(wallets: set) -> dict:
+    """
+    更新錢包帳號資訊快取。
+
+    優先抓從未查過的錢包（新進場的），再用剩餘額度刷新最久沒更新的，
+    每輪總量有上限，避免執行時間隨錢包數無限增長。
+    """
+    cache = {}
+    if os.path.exists(PROFILES_PATH):
+        try:
+            with open(PROFILES_PATH, encoding="utf-8") as f:
+                cache = json.load(f).get("wallets", {})
+        except Exception as e:
+            print(f"  ⚠️ 帳號資訊快取讀取失敗（{e}），重新建立")
+
+    now = datetime.now(TZ8)
+    missing = [w for w in wallets if w not in cache]
+
+    def is_stale(w):
+        ts = cache.get(w, {}).get("updated_at")
+        if not ts:
+            return True
+        try:
+            return (now - datetime.fromisoformat(ts)).total_seconds() > PROFILE_STALE_H * 3600
+        except Exception:
+            return True
+
+    stale = sorted(
+        (w for w in wallets if w in cache and is_stale(w)),
+        key=lambda w: cache[w].get("updated_at") or "",
+    )
+    todo = missing + stale[: max(0, PROFILE_REFRESH - len(missing))]
+    if not todo:
+        print(f"  [帳號資訊] {len(cache)} 個錢包皆為最新，略過")
+        return cache
+
+    print(f"  [帳號資訊] 抓取 {len(todo)} 個（新 {len(missing)}、刷新 {len(todo) - len(missing)}）…")
+
+    def work(w):
+        return w, fetch_one_profile(w, need_created=w not in cache
+                                    or not cache[w].get("created_at"))
+
+    ok = 0
+    with ThreadPoolExecutor(max_workers=PROFILE_WORKERS) as ex:
+        for w, info in ex.map(work, todo):
+            if not info:
+                continue
+            entry = dict(cache.get(w, {}))
+            entry.update({k: v for k, v in info.items() if v is not None})
+            entry["updated_at"] = now.isoformat(timespec="seconds")
+            cache[w] = entry
+            ok += 1
+
+    print(f"  [帳號資訊] 完成 {ok}/{len(todo)}，快取共 {len(cache)} 個錢包")
+
+    write_json_atomic(PROFILES_PATH, {
+        "updated_at": now.isoformat(timespec="seconds"),
+        "count": len(cache),
+        "wallets": cache,
+    })
+    return cache
+
+
 def cross_city_map(roster: dict) -> dict:
     """錢包 → 有出現過的縣市名稱清單。用來標記跨縣市操作的地址。"""
     id_to_city = {str(e["id"]): e["city"] for e in EVENTS}
@@ -514,6 +612,7 @@ def main(test_email: bool = False) -> int:
     by_city = {}
     daily = {}
     failures = []
+    all_wallets = set()
     last_cfg = last_trades = last_cond = None
 
     for cfg in EVENTS:
@@ -549,6 +648,7 @@ def main(test_email: bool = False) -> int:
             by_city[cfg["city"]] = new_wallets
 
         wallets = {(t.get("proxyWallet") or "").lower() for t in trades if t.get("proxyWallet")}
+        all_wallets |= wallets
         active = [m for m in event["markets"] if (m.get("volumeNum") or 0) > 0]
         print(f"  ✓ {label:<12} {len(trades):>4} 筆　{len(wallets):>3} 錢包　"
               f"${float(event.get('volume') or 0):>10,.0f}　"
@@ -575,6 +675,7 @@ def main(test_email: bool = False) -> int:
         return 1
 
     save_roster(roster)
+    update_profiles(all_wallets)
     write_json_atomic(os.path.join(SNAPSHOT_DIR, f"{now:%Y-%m-%d}.json"), {
         "fetched_at": now.isoformat(timespec="seconds"),
         "events": daily,

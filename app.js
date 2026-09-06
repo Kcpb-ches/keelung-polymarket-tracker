@@ -12,7 +12,7 @@
 
 // 版號跟 index.html 的 ?v= 對應。若 console 印出的版號跟你剛改的不一樣，
 // 代表瀏覽器讀的是快取的舊檔，按 Cmd+Shift+R 強制重新載入。
-const APP_VERSION = 8;
+const APP_VERSION = 9;
 console.log(`[選舉賭盤監控] app.js v${APP_VERSION}`);
 
 // ── 設定 ────────────────────────────────────────────────────
@@ -142,6 +142,9 @@ let prevKeys    = new Set();
 let tradesSource = 'loading';  // 'live' | 'snapshot' | 'error'
 let oddsSource   = 'loading';  // 'live' | 'snapshot' | 'error'
 let snapshotAt   = null;
+// 錢包帳號資訊（加入時間、全站預測次數），由 Actions 抓好存成靜態檔，
+// 所以沒有 VPN 也讀得到。整站共用一份，切換縣市不需要重載。
+let walletProfiles = null;
 let firstLoad   = true;
 
 let viewMode = 'table';        // 'table' | 'feed' | 'wallet'
@@ -276,6 +279,22 @@ async function fetchEventLive(eventId) {
   const ev = Array.isArray(evArr) ? evArr[0] : evArr;
   if (!ev) throw new Error('event 不存在');
   return ev;
+}
+
+/**
+ * 載入錢包帳號資訊。只在第一次進錢包視圖時抓一次，失敗就當作沒有，
+ * 卡片照常顯示其餘欄位，不影響主要功能。
+ */
+async function loadWalletProfiles() {
+  if (walletProfiles) return walletProfiles;
+  try {
+    const d = await fetchJson(`wallet-profiles.json?t=${Date.now()}`, 15000);
+    walletProfiles = d.wallets || {};
+  } catch (e) {
+    console.warn('[帳號資訊讀取失敗]', e.message);
+    walletProfiles = {};
+  }
+  return walletProfiles;
 }
 
 /** 備援：讀 GitHub Actions 產生的快照（每個縣市一支檔） */
@@ -661,6 +680,12 @@ function render() {
 
   if (viewMode === 'wallet') {
     renderWallets(filtered);
+    // 帳號資訊是額外的靜態檔，第一次進錢包視圖才載入，回來後重畫一次補上欄位
+    if (!walletProfiles) {
+      loadWalletProfiles().then(() => {
+        if (viewMode === 'wallet') renderWallets(applyFilters(allTrades));
+      });
+    }
     return;
   }
 
@@ -788,8 +813,16 @@ function renderWallets(rows) {
     return;
   }
 
+  const profiles = walletProfiles || {};
+
   const html = list.map((w, i) => {
     const isEarly = earlyCutoff && w.firstTs <= earlyCutoff;
+    const p = profiles[w.wallet] || {};
+    const joinMs = p.created_at ? Date.parse(p.created_at) : null;
+
+    // 帳號建立於本盤開盤之後 → 很可能是為了這場選舉才開的新帳號，值得注意
+    const freshAcct = joinMs && openMs && joinMs >= openMs;
+
     return `
     <div class="wallet-item ${isEarly ? 'early' : ''}">
       <div class="wallet-head">
@@ -804,9 +837,19 @@ function renderWallets(rows) {
              title="在 relay.link 查這個錢包的跨鏈轉帳紀錄（回溯 USDC.e 的來源鏈）">Relay ↗</a>
         </span>
         ${isEarly ? `<span class="wallet-badge">開盤 ${EARLY_WINDOW_H} 小時內進場</span>` : ''}
+        ${freshAcct ? '<span class="wallet-badge badge-fresh">開盤後才註冊的帳號</span>' : ''}
       </div>
       <div class="wallet-grid">
-        <div class="wallet-cell"><span class="k">成交筆數</span><span class="v">${fmtInt(w.count)}</span></div>
+        <div class="wallet-cell">
+          <span class="k">帳號加入時間</span>
+          <span class="v" style="font-size:12px">${joinMs ? tpeTime(joinMs, false) : '—'}</span>
+        </div>
+        <div class="wallet-cell">
+          <span class="k">全站預測次數</span>
+          <span class="v" title="這個帳號在整個 Polymarket 的累計交易次數，不只台灣選舉">${
+            p.traded != null ? fmtInt(p.traded) : '—'}</span>
+        </div>
+        <div class="wallet-cell"><span class="k">本盤成交筆數</span><span class="v">${fmtInt(w.count)}</span></div>
         <div class="wallet-cell"><span class="k">買進金額</span><span class="v pos">$${fmt(w.buyUsd)}</span></div>
         <div class="wallet-cell"><span class="k">賣出金額</span><span class="v neg">$${fmt(w.sellUsd)}</span></div>
         <div class="wallet-cell"><span class="k">淨投入</span><span class="v ${w.netUsd >= 0 ? 'pos' : 'neg'}">$${fmt(w.netUsd)}</span></div>
