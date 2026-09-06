@@ -26,3 +26,4 @@ new_wallets_subject.txt
 .vscode/
 .idea/
 *.swp
+.vercel

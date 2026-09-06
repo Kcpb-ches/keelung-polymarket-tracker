@@ -48,7 +48,11 @@ SEEN_WALLETS_PATH = os.path.join(ROOT, "seen_wallets.json")
 NOTIFY_HTML_PATH = os.path.join(ROOT, "new_wallets.html")
 NOTIFY_SUBJECT_PATH = os.path.join(ROOT, "new_wallets_subject.txt")
 
-SITE_URL = "https://kcpb-ches.github.io/keelung-polymarket-tracker/"
+# 通知信裡「開啟監控頁面」按鈕的連結。
+# 用 Vercel 而非 GitHub Pages，因為 Ches 的內網擋 github.io。
+# 兩個網址都是同一個 repo 自動部署，內容完全一致。
+SITE_URL = "https://keelung-polymarket-tracker.vercel.app/"
+SITE_URL_ALT = "https://kcpb-ches.github.io/keelung-polymarket-tracker/"
 
 # ── 縣市設定 ────────────────────────────────────────────────
 # 要新增縣市：在這裡加一筆，並在 app.js 的 EVENTS 加對應的一筆。
@@ -467,11 +471,15 @@ def build_notification(by_city: dict, cross: dict, test: bool = False):
 {test_banner}{cross_banner}
 {''.join(sections)}
 
-  <p style="margin:24px 0 0">
+  <p style="margin:24px 0 6px">
     <a href="{SITE_URL}" style="display:inline-block;background:#0969da;color:#fff;
        padding:9px 18px;border-radius:7px;text-decoration:none;font-size:14px;font-weight:600">
       開啟監控頁面
     </a>
+  </p>
+  <p style="margin:0;font-size:11.5px;color:#818b98">
+    上面按鈕連到 Vercel。若打不開，備用網址：
+    <a href="{SITE_URL_ALT}" style="color:#0969da">GitHub Pages ↗</a>
   </p>
 
   <p style="margin:22px 0 0;padding-top:14px;border-top:1px solid #e6eaef;

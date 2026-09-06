@@ -18,8 +18,17 @@
 | 嘉義市 | 848453 | `#chiayi-city` |
 | 苗栗縣 | 848436 | `#miaoli` |
 
+### 兩個網址（內容完全相同）
+
+| 平台 | 網址 | 備註 |
+|---|---|---|
+| **Vercel** | <https://keelung-polymarket-tracker.vercel.app/> | **主要**，Ches 的內網擋 github.io |
+| GitHub Pages | <https://kcpb-ches.github.io/keelung-polymarket-tracker/> | 備用 |
+
+兩者都接同一個 GitHub repo 自動部署，Actions 每次 commit 快照後兩邊都會更新。
+
 網址帶錨點可直接開到指定縣市，例如
-<https://kcpb-ches.github.io/keelung-polymarket-tracker/#kaohsiung>。
+<https://keelung-polymarket-tracker.vercel.app/#kaohsiung>。
 
 ---
 
