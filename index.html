@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>2026 地方選舉 · Polymarket 下注監控</title>
   <!-- ⚠️ 改完 app.js / style.css 記得把下面兩個 ?v= 的數字加一，否則瀏覽器會一直用舊的快取版本 -->
-  <link rel="stylesheet" href="style.css?v=13">
+  <link rel="stylesheet" href="style.css?v=14">
 </head>
 <body>
 
@@ -37,9 +37,20 @@
   </nav>
 </header>
 
+<!-- 首頁：台灣地圖導覽（點縣市進入該縣市頁面） -->
+<section class="map-home container" id="mapHome" style="display:none;">
+  <h2 class="map-title">選擇縣市</h2>
+  <p class="map-sub">點選地圖上的縣市，進入該縣市的賭盤監控。灰色縣市尚未納入監控。</p>
+  <div class="map-wrap">
+    <svg id="twMap" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="台灣縣市地圖"></svg>
+    <div class="map-tip" id="mapTip" hidden></div>
+  </div>
+</section>
+
 <!-- 資料來源警示（僅在快照模式或連線失敗時出現） -->
 <div id="sourceNotice" class="notice container" style="display:none;"></div>
 
+<div id="cityView">
 <!-- 候選人賠率卡 -->
 <section class="stats container" id="statsCards">
   <div class="loading">載入盤口中…</div>
@@ -158,6 +169,7 @@
 <main class="feed container" id="feed">
   <div class="loading">載入中…</div>
 </main>
+</div><!-- /cityView -->
 
 <footer class="container">
   <p>
@@ -169,6 +181,7 @@
   </p>
 </footer>
 
-<script src="app.js?v=13"></script>
+<script src="map-data.js?v=1"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>

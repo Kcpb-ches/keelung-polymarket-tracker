@@ -12,7 +12,7 @@
 
 // 版號跟 index.html 的 ?v= 對應。若 console 印出的版號跟你剛改的不一樣，
 // 代表瀏覽器讀的是快取的舊檔，按 Cmd+Shift+R 強制重新載入。
-const APP_VERSION = 13;
+const APP_VERSION = 14;
 console.log(`[選舉賭盤監控] app.js v${APP_VERSION}`);
 
 // ── 設定 ────────────────────────────────────────────────────
@@ -537,21 +537,98 @@ async function loadData(manual = false) {
 
 // ── 縣市頁簽 ────────────────────────────────────────────────
 
-/** 依網址 hash 決定要開哪個縣市，認不得就回到第一個（基隆） */
+/**
+ * 依網址 hash 決定要開哪個縣市。
+ * 沒有 hash（或 #home）→ 回傳 null，代表顯示地圖首頁。
+ */
 function eventFromHash() {
   const slug = (location.hash || '').replace(/^#/, '');
-  return EVENTS.find((e) => e.slug === slug) || EVENTS[0];
+  if (!slug || slug === 'home') return null;
+  return EVENTS.find((e) => e.slug === slug) || null;
+}
+
+// ── 台灣地圖首頁 ────────────────────────────────────────────
+
+/** 地圖上的縣市名 → 設定表裡的 event（沒有盤口的縣市回傳 undefined） */
+function eventByCity(name) {
+  return EVENTS.find((e) => e.city === name);
+}
+
+function renderMap() {
+  const svg = $('twMap');
+  if (svg.dataset.built) return;          // 只畫一次
+  svg.setAttribute('viewBox', `0 0 ${TW_MAP.w} ${TW_MAP.h}`);
+
+  svg.innerHTML = TW_MAP.counties.map((c) => {
+    const ev = eventByCity(c.name);
+    const cls = ev ? 'county has-event' : 'county no-event';
+    // 有盤口的縣市才標名稱，避免畫面太雜
+    const label = ev
+      ? `<text class="county-label" x="${c.cx}" y="${c.cy}">${escapeHtml(c.name)}</text>`
+      : '';
+    return `<g class="${cls}" data-city="${escapeHtml(c.name)}"${ev ? ` data-slug="${ev.slug}" role="link" tabindex="0"` : ''}>
+      <title>${escapeHtml(c.name)}${ev ? '' : '（未納入監控）'}</title>
+      <path d="${c.d}"/>${label}
+    </g>`;
+  }).join('');
+
+  const tip = $('mapTip');
+  svg.querySelectorAll('.county').forEach((g) => {
+    const city = g.dataset.city;
+    const slug = g.dataset.slug;
+
+    g.addEventListener('mouseenter', () => {
+      const ev = eventByCity(city);
+      tip.hidden = false;
+      tip.innerHTML = ev
+        ? `<b>${escapeHtml(ev.city)}${escapeHtml(ev.office)}</b><span>點擊進入</span>`
+        : `<b>${escapeHtml(city)}</b><span>尚未納入監控</span>`;
+    });
+    g.addEventListener('mousemove', (e) => {
+      const r = svg.parentElement.getBoundingClientRect();
+      tip.style.left = `${e.clientX - r.left + 14}px`;
+      tip.style.top = `${e.clientY - r.top + 14}px`;
+    });
+    g.addEventListener('mouseleave', () => { tip.hidden = true; });
+
+    if (!slug) return;
+    g.addEventListener('click', () => { location.hash = slug; });
+    g.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); location.hash = slug; }
+    });
+  });
+
+  svg.dataset.built = '1';
+}
+
+/** 切到地圖首頁：停掉縣市畫面，顯示地圖 */
+function showHome() {
+  activeEvent = null;
+  document.title = '2026 地方選舉 · Polymarket 下注監控';
+  $('pageTitle').textContent = '2026 台灣地方選舉 · Polymarket 下注監控';
+  $('cityView').style.display = 'none';
+  $('sourceNotice').style.display = 'none';
+  $('mapHome').style.display = '';
+  $('sourceBadge').className = 'badge badge-loading';
+  $('sourceBadge').textContent = `${EVENTS.length} 個縣市`;
+  $('lastUpdate').textContent = '選擇縣市以檢視';
+  $('totalCount').textContent = '—';
+  renderTabs();
+  renderMap();
 }
 
 function renderTabs() {
-  $('cityTabs').innerHTML = EVENTS.map((e) => `
+  const home = `<button class="city-tab tab-home ${!activeEvent ? 'active' : ''}"
+      data-slug="home" type="button" title="回到地圖首頁">🗺 地圖</button>`;
+  $('cityTabs').innerHTML = home + EVENTS.map((e) => `
     <button class="city-tab ${e === activeEvent ? 'active' : ''}" data-slug="${e.slug}" type="button">
       ${escapeHtml(e.city)}
     </button>`).join('');
 
   $('cityTabs').querySelectorAll('.city-tab').forEach((b) => {
     b.addEventListener('click', () => {
-      if (b.dataset.slug === activeEvent.slug) return;
+      const cur = activeEvent ? activeEvent.slug : 'home';
+      if (b.dataset.slug === cur) return;
       location.hash = b.dataset.slug;   // 交給 hashchange 統一處理
     });
   });
@@ -560,7 +637,10 @@ function renderTabs() {
 /** 切換縣市：把所有跟舊縣市有關的狀態清乾淨，再重新載入 */
 function switchEvent(next) {
   if (next === activeEvent) return;
+  if (!next) { showHome(); return; }      // 回地圖首頁
   activeEvent = next;
+  $('mapHome').style.display = 'none';
+  $('cityView').style.display = '';
 
   markets = [];
   marketById = {};
@@ -1190,17 +1270,24 @@ function initTheme() {
 }
 
 // ── 啟動 ────────────────────────────────────────────────────
-activeEvent = eventFromHash();
-document.title = `2026 ${activeEvent.city}${activeEvent.office}選舉 · Polymarket 下注監控`;
-$('pageTitle').textContent = `2026 ${activeEvent.city}${activeEvent.office}選舉 · Polymarket 下注`;
-
 initTheme();
 initFilterUI();
-renderTabs();
 updatePillLabels();
 
 // 支援上一頁／下一頁與直接貼帶 hash 的網址
 window.addEventListener('hashchange', () => switchEvent(eventFromHash()));
 
-loadData();
-setInterval(() => loadData(), REFRESH_INTERVAL);
+const startEvent = eventFromHash();
+if (startEvent) {
+  activeEvent = startEvent;
+  document.title = `2026 ${activeEvent.city}${activeEvent.office}選舉 · Polymarket 下注監控`;
+  $('pageTitle').textContent = `2026 ${activeEvent.city}${activeEvent.office}選舉 · Polymarket 下注`;
+  $('cityView').style.display = '';
+  renderTabs();
+  loadData();
+} else {
+  showHome();   // 沒指定縣市 → 地圖首頁
+}
+
+// 首頁不需要輪詢，切到縣市後才有意義
+setInterval(() => { if (activeEvent) loadData(); }, REFRESH_INTERVAL);
