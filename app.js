@@ -12,7 +12,7 @@
 
 // 版號跟 index.html 的 ?v= 對應。若 console 印出的版號跟你剛改的不一樣，
 // 代表瀏覽器讀的是快取的舊檔，按 Cmd+Shift+R 強制重新載入。
-const APP_VERSION = 15;
+const APP_VERSION = 16;
 console.log(`[選舉賭盤監控] app.js v${APP_VERSION}`);
 
 // ── 設定 ────────────────────────────────────────────────────
@@ -559,34 +559,54 @@ function renderMap() {
   if (svg.dataset.built) return;          // 只畫一次
   svg.setAttribute('viewBox', `0 0 ${TW_MAP.w} ${TW_MAP.h}`);
 
-  const counties = TW_MAP.counties.map((c) => {
+  // 圖形與標籤分兩層：所有縣市的圖形先畫完，標籤才畫上去。
+  // 否則像嘉義市這種被嘉義縣包住的飛地，標籤會被後畫的鄰縣圖形蓋掉。
+  const shapes = TW_MAP.counties.map((c) => {
     const ev = eventByCity(c.name);
     const cls = ev ? 'county has-event' : 'county no-event';
-    // 有盤口的縣市才標名稱，避免畫面太雜
-    const label = ev
-      ? `<text class="county-label" x="${c.cx}" y="${c.cy}">${escapeHtml(c.name)}</text>`
-      : '';
     return `<g class="${cls}" data-city="${escapeHtml(c.name)}"${ev ? ` data-slug="${ev.slug}" role="link" tabindex="0"` : ''}>
       <title>${escapeHtml(c.name)}${ev ? '' : '（未納入監控）'}</title>
-      <path d="${c.d}"/>${label}
+      <path d="${c.d}"/>
     </g>`;
   }).join('');
 
-  // 離島是另外縮小擺放的，比例與本島不同，標示清楚以免誤讀相對大小與距離
-  const hasOutlying = TW_MAP.counties.some((c) => c.outlying);
-  const inset = hasOutlying
-    ? `<g class="inset-note"><text x="20" y="686">離島（非實際比例與位置）</text></g>`
-    : '';
+  // 只標有盤口的縣市，避免畫面太雜
+  const labels = TW_MAP.counties.filter((c) => eventByCity(c.name)).map((c) =>
+    `<text class="county-label" data-city="${escapeHtml(c.name)}"
+       x="${c.cx}" y="${c.cy}">${escapeHtml(c.name)}</text>`).join('');
 
-  svg.innerHTML = counties + inset;
+  // 離島是另外縮小擺放的，比例與位置都不是實際的，要標示清楚以免誤讀
+  const outly = TW_MAP.counties.filter((c) => c.outlying);
+  let inset = '';
+  if (outly.length) {
+    const xs = [], ys = [];
+    outly.forEach((c) => {
+      for (const m of c.d.matchAll(/([\d.]+),([\d.]+)/g)) {
+        xs.push(+m[1]); ys.push(+m[2]);
+      }
+    });
+    const pad = 14;
+    const x0 = Math.min(...xs) - pad, x1 = Math.max(...xs) + pad;
+    const y0 = Math.min(...ys) - pad, y1 = Math.max(...ys) + pad;
+    inset = `<g class="inset-note">
+      <rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" rx="8"/>
+      <text x="${x0}" y="${y0 - 8}">離島（非實際比例與位置）</text>
+    </g>`;
+  }
+
+  svg.innerHTML = inset + shapes + labels;
 
   const tip = $('mapTip');
   svg.querySelectorAll('.county').forEach((g) => {
     const city = g.dataset.city;
     const slug = g.dataset.slug;
 
+    // 標籤現在畫在圖形層之外，hover 時手動幫它加上 class 才會一起變色
+    const label = svg.querySelector(`text.county-label[data-city="${city}"]`);
+
     g.addEventListener('mouseenter', () => {
       const ev = eventByCity(city);
+      if (label) label.classList.add('hot');
       tip.hidden = false;
       tip.innerHTML = ev
         ? `<b>${escapeHtml(ev.city)}${escapeHtml(ev.office)}</b><span>點擊進入</span>`
@@ -597,10 +617,15 @@ function renderMap() {
       tip.style.left = `${e.clientX - r.left + 14}px`;
       tip.style.top = `${e.clientY - r.top + 14}px`;
     });
-    g.addEventListener('mouseleave', () => { tip.hidden = true; });
+    g.addEventListener('mouseleave', () => {
+      if (label) label.classList.remove('hot');
+      tip.hidden = true;
+    });
 
     if (!slug) return;
     g.addEventListener('click', () => { location.hash = slug; });
+    g.addEventListener('focus', () => { if (label) label.classList.add('hot'); });
+    g.addEventListener('blur', () => { if (label) label.classList.remove('hot'); });
     g.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); location.hash = slug; }
     });

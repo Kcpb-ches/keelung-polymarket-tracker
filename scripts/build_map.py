@@ -74,11 +74,71 @@ def ring_area(ring):
     return abs(a) / 2
 
 
-def rings_of(geom):
-    """取出所有外環（忽略內環／洞，縣市界用不到）"""
+def polys_of(geom):
+    """
+    取出多邊形清單，每個是 [外環, 洞1, 洞2...]。
+
+    洞一定要保留：臺北市是新北市包住的飛地、嘉義市是嘉義縣包住的飛地。
+    只取外環的話，外圍縣市的幾何中心會落在飛地上，標籤就被飛地的圖形蓋住。
+    """
     if geom["type"] == "Polygon":
-        return [geom["coordinates"][0]]
-    return [poly[0] for poly in geom["coordinates"]]
+        return [geom["coordinates"]]
+    return list(geom["coordinates"])
+
+
+def point_in_ring(pt, ring):
+    """射線法判斷點是否在多邊形內"""
+    x, y = pt
+    inside = False
+    n = len(ring)
+    for i in range(n - 1):
+        x1, y1 = ring[i]
+        x2, y2 = ring[i + 1]
+        if (y1 > y) != (y2 > y):
+            xi = x1 + (y - y1) * (x2 - x1) / (y2 - y1)
+            if x < xi:
+                inside = not inside
+    return inside
+
+
+def dist_to_rings(pt, rings):
+    """點到所有環邊界的最短距離"""
+    best = float("inf")
+    for ring in rings:
+        for i in range(len(ring) - 1):
+            d = perpendicular_distance(pt, ring[i], ring[i + 1])
+            if d < best:
+                best = d
+    return best
+
+
+def label_point(outer, holes, steps=44):
+    """
+    找「離邊界最遠的內部點」（pole of inaccessibility）當標籤位置。
+
+    比幾何中心可靠：狹長或凹形的縣市（例如屏東、新北）中心可能落在
+    範圍外或飛地上，這個做法保證落在實心區域內。
+    """
+    xs = [p[0] for p in outer]
+    ys = [p[1] for p in outer]
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    rings = [outer] + holes
+    best, best_d = None, -1.0
+    for i in range(steps):
+        for j in range(steps):
+            px = x0 + (x1 - x0) * (i + 0.5) / steps
+            py = y0 + (y1 - y0) * (j + 0.5) / steps
+            if not point_in_ring((px, py), outer):
+                continue
+            if any(point_in_ring((px, py), h) for h in holes):
+                continue
+            d = dist_to_rings((px, py), rings)
+            if d > best_d:
+                best, best_d = (px, py), d
+    if best:
+        return best
+    # 極端情況（化簡後太細）退回幾何中心
+    return (sum(xs) / len(xs), sum(ys) / len(ys))
 
 
 def main(src, out=None):
@@ -89,25 +149,35 @@ def main(src, out=None):
 
     print(f"讀入 {len(gj['features'])} 個縣市")
 
-    # 第一輪：化簡並蒐集所有座標，順便求整體範圍
+    # 第一輪：化簡。每個縣市保留 [外環, 洞...] 的結構
     counties, raw_pts, kept_pts = [], 0, 0
     for feat in gj["features"]:
         name = feat["properties"].get("COUNTYNAME") or feat["properties"].get("name")
         name = NAME_FIX.get(name, name)
 
-        rings = []
-        for ring in rings_of(feat["geometry"]):
-            raw_pts += len(ring)
-            if ring_area(ring) < MIN_AREA:
-                continue
-            simp = douglas_peucker([tuple(p) for p in ring], TOLERANCE)
-            if len(simp) >= 4:
-                rings.append(simp)
+        polys = []
+        for poly in polys_of(feat["geometry"]):
+            simp_rings = []
+            for k, ring in enumerate(poly):
+                raw_pts += len(ring)
+                # 外環太小就整塊丟掉；洞用較寬鬆的門檻，免得飛地被誤刪
+                if ring_area(ring) < (MIN_AREA if k == 0 else MIN_AREA / 4):
+                    if k == 0:
+                        simp_rings = []
+                        break
+                    continue
+                simp = douglas_peucker([tuple(p) for p in ring], TOLERANCE)
+                if len(simp) >= 4:
+                    simp_rings.append(simp)
+            if simp_rings:
+                polys.append(simp_rings)
 
-        rings.sort(key=ring_area, reverse=True)
-        rings = rings[:MAX_RINGS]
-        kept_pts += sum(len(r) for r in rings)
-        counties.append({"name": name, "rings": rings})
+        polys.sort(key=lambda p: ring_area(p[0]), reverse=True)
+        polys = polys[:MAX_RINGS]
+        kept_pts += sum(len(r) for p in polys for r in p)
+        # rings：投影與範圍計算用的所有座標；polys：保留洞的結構
+        counties.append({"name": name, "polys": polys,
+                         "rings": [r for p in polys for r in p]})
 
     def make_projection(subset, box):
         """把一群縣市投影到指定的方框內，回傳 project 函式"""
@@ -142,14 +212,14 @@ def main(src, out=None):
     for c in counties:
         project = proj_out if c["name"] in OUTLYING else proj_main
         d = []
-        for ring in c["rings"]:
-            pts = [project(*p) for p in ring]
-            d.append("M" + "L".join(f"{x},{y}" for x, y in pts) + "Z")
-        # 標籤放在最大一塊的中心
-        big = c["rings"][0]
-        cx = sum(p[0] for p in big) / len(big)
-        cy = sum(p[1] for p in big) / len(big)
-        lx, ly = project(cx, cy)
+        for poly in c["polys"]:
+            for ring in poly:           # 外環與洞都寫進同一個 path
+                pts = [project(*p) for p in ring]
+                d.append("M" + "L".join(f"{x},{y}" for x, y in pts) + "Z")
+
+        # 標籤放在最大一塊的「離邊界最遠內部點」，先在經緯度空間算再投影
+        big = c["polys"][0]
+        lx, ly = project(*label_point(big[0], big[1:]))
         out_data.append({"name": c["name"], "d": "".join(d), "cx": lx, "cy": ly,
                          "outlying": c["name"] in OUTLYING})
 
