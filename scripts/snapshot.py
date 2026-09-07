@@ -328,7 +328,8 @@ def fetch_one_profile(wallet: str, need_created: bool) -> dict:
         try:
             p = http_get_json(f"{GAMMA_API}/public-profile?address={wallet}")
             out["created_at"] = p.get("createdAt")
-            out["name"] = p.get("name") or ""
+            # 沿用 display_name 的規則：系統自動填的地址字串不算暱稱
+            out["name"] = display_name(p)
             out["pseudonym"] = p.get("pseudonym") or ""
         except Exception:
             pass
@@ -340,12 +341,15 @@ def fetch_one_profile(wallet: str, need_created: bool) -> dict:
     return out
 
 
-def update_profiles(wallets: set) -> dict:
+def update_profiles(wallets: set, cities_map: dict = None) -> dict:
     """
     更新錢包帳號資訊快取。
 
     優先抓從未查過的錢包（新進場的），再用剩餘額度刷新最久沒更新的，
     每輪總量有上限，避免執行時間隨錢包數無限增長。
+
+    cities_map（錢包 → 出現過的縣市集合）不需要打 API，每輪對所有錢包
+    全量更新，前端才能在錢包卡片上顯示跨縣市資訊。
     """
     cache = {}
     if os.path.exists(PROFILES_PATH):
@@ -372,28 +376,39 @@ def update_profiles(wallets: set) -> dict:
         key=lambda w: cache[w].get("updated_at") or "",
     )
     todo = missing + stale[: max(0, PROFILE_REFRESH - len(missing))]
-    if not todo:
-        print(f"  [帳號資訊] {len(cache)} 個錢包皆為最新，略過")
-        return cache
 
-    print(f"  [帳號資訊] 抓取 {len(todo)} 個（新 {len(missing)}、刷新 {len(todo) - len(missing)}）…")
+    if todo:
+        print(f"  [帳號資訊] 抓取 {len(todo)} 個（新 {len(missing)}、刷新 {len(todo) - len(missing)}）…")
 
-    def work(w):
-        return w, fetch_one_profile(w, need_created=w not in cache
-                                    or not cache[w].get("created_at"))
+        def work(w):
+            return w, fetch_one_profile(w, need_created=w not in cache
+                                        or not cache[w].get("created_at"))
 
-    ok = 0
-    with ThreadPoolExecutor(max_workers=PROFILE_WORKERS) as ex:
-        for w, info in ex.map(work, todo):
-            if not info:
-                continue
-            entry = dict(cache.get(w, {}))
-            entry.update({k: v for k, v in info.items() if v is not None})
-            entry["updated_at"] = now.isoformat(timespec="seconds")
-            cache[w] = entry
-            ok += 1
+        ok = 0
+        with ThreadPoolExecutor(max_workers=PROFILE_WORKERS) as ex:
+            for w, info in ex.map(work, todo):
+                if not info:
+                    continue
+                entry = dict(cache.get(w, {}))
+                entry.update({k: v for k, v in info.items() if v is not None})
+                entry["updated_at"] = now.isoformat(timespec="seconds")
+                cache[w] = entry
+                ok += 1
+        print(f"  [帳號資訊] 完成 {ok}/{len(todo)}，快取共 {len(cache)} 個錢包")
+    else:
+        print(f"  [帳號資訊] {len(cache)} 個錢包皆為最新，不需重抓")
 
-    print(f"  [帳號資訊] 完成 {ok}/{len(todo)}，快取共 {len(cache)} 個錢包")
+    # 跨縣市資訊：不用打 API，每輪對所有錢包全量重算。
+    # 錢包可能在任何一輪新增縣市，只更新 todo 那批會漏掉。
+    if cities_map:
+        order = {e["city"]: i for i, e in enumerate(EVENTS)}
+        multi = 0
+        for w, cities in cities_map.items():
+            entry = cache.setdefault(w, {})
+            entry["cities"] = sorted(cities, key=lambda c: order.get(c, 99))
+            if len(cities) > 1:
+                multi += 1
+        print(f"  [帳號資訊] 跨縣市標記完成，{multi} 個錢包出現在 2 個以上縣市")
 
     write_json_atomic(PROFILES_PATH, {
         "updated_at": now.isoformat(timespec="seconds"),
@@ -678,7 +693,8 @@ def main(test_email: bool = False) -> int:
         return 1
 
     save_roster(roster)
-    update_profiles(all_wallets)
+    cross = cross_city_map(roster)
+    update_profiles(all_wallets, cross)
     write_json_atomic(os.path.join(SNAPSHOT_DIR, f"{now:%Y-%m-%d}.json"), {
         "fetched_at": now.isoformat(timespec="seconds"),
         "events": daily,
@@ -689,7 +705,6 @@ def main(test_email: bool = False) -> int:
         if os.path.exists(p):
             os.remove(p)
 
-    cross = cross_city_map(roster)
     print("-" * 66)
     if by_city:
         subject = build_notification(by_city, cross)

@@ -412,6 +412,9 @@ tr:hover .copy-btn, .feed-item:hover .copy-btn, .wallet-item:hover .copy-btn { o
 .wallet-links { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; }
 /* 帳號建立於本盤開盤之後——為了這場選舉才註冊的新帳號 */
 .wallet-badge.badge-fresh { background: rgba(88,166,255,.16); color: var(--accent); }
+/* 同一地址在多個縣市賭盤操作 */
+.wallet-badge.badge-cross { background: rgba(210,153,34,.16); color: var(--warn); }
+.wallet-cell .v.cross { color: var(--warn); }
 .wallet-badge {
   font-size: 10.5px; font-weight: 650; padding: 1px 7px; border-radius: 5px;
   background: rgba(210,153,34,.14); color: var(--warn); white-space: nowrap;

@@ -12,7 +12,7 @@
 
 // 版號跟 index.html 的 ?v= 對應。若 console 印出的版號跟你剛改的不一樣，
 // 代表瀏覽器讀的是快取的舊檔，按 Cmd+Shift+R 強制重新載入。
-const APP_VERSION = 10;
+const APP_VERSION = 11;
 console.log(`[選舉賭盤監控] app.js v${APP_VERSION}`);
 
 // ── 設定 ────────────────────────────────────────────────────
@@ -826,6 +826,10 @@ function renderWallets(rows) {
     // 帳號建立於本盤開盤之後 → 很可能是為了這場選舉才開的新帳號，值得注意
     const freshAcct = joinMs && openMs && joinMs >= openMs;
 
+    // 同一地址跨多個政治賭盤操作，是值得優先檢視的模式
+    const cities = p.cities || [];
+    const others = cities.filter((c) => c !== activeEvent.city);
+
     return `
     <div class="wallet-item ${isEarly ? 'early' : ''}">
       <div class="wallet-head">
@@ -844,6 +848,7 @@ function renderWallets(rows) {
         </span>
         ${isEarly ? `<span class="wallet-badge">開盤 ${EARLY_WINDOW_H} 小時內進場</span>` : ''}
         ${freshAcct ? '<span class="wallet-badge badge-fresh">開盤後才註冊的帳號</span>' : ''}
+        ${others.length ? `<span class="wallet-badge badge-cross">跨 ${cities.length} 個縣市</span>` : ''}
       </div>
       <div class="wallet-grid">
         <div class="wallet-cell">
@@ -860,6 +865,11 @@ function renderWallets(rows) {
         <div class="wallet-cell"><span class="k">賣出金額</span><span class="v neg">$${fmt(w.sellUsd)}</span></div>
         <div class="wallet-cell"><span class="k">淨投入</span><span class="v ${w.netUsd >= 0 ? 'pos' : 'neg'}">$${fmt(w.netUsd)}</span></div>
         <div class="wallet-cell"><span class="k">押注標的</span><span class="v" style="font-size:12.5px">${escapeHtml([...w.cands].join('、'))}</span></div>
+        <div class="wallet-cell" ${others.length >= 4 ? 'style="grid-column:1/-1"' : ''}>
+          <span class="k">${others.length ? '也出現在' : '參與縣市'}</span>
+          <span class="v ${others.length ? 'cross' : ''}" style="font-size:12.5px">${
+            others.length ? escapeHtml(others.join('、')) : '僅本縣市'}</span>
+        </div>
         <div class="wallet-cell"><span class="k">首次進場</span><span class="v" style="font-size:12px">${tpeTime(w.firstTs, false)}</span></div>
         <div class="wallet-cell"><span class="k">最後動作</span><span class="v" style="font-size:12px">${tpeTime(w.lastTs, false)}</span></div>
       </div>
