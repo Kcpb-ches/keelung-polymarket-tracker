@@ -26,7 +26,12 @@ MAX_RINGS = 6
 # 小於這個面積的環直接丟棄（單位：平方度）
 MIN_AREA = 0.00035
 
-VIEW_W, VIEW_H = 800, 1000     # SVG 畫布尺寸
+VIEW_W, VIEW_H = 760, 1000     # SVG 畫布尺寸
+
+# 這三個縣市離本島很遠（金門在福建外海、連江更北），若一起參與範圍計算，
+# 會把畫布撐開兩倍、讓本島只剩三分之一大小。改為單獨縮小後放到左下角。
+OUTLYING = {"金門縣", "連江縣", "澎湖縣"}
+INSET_BOX = (14, 700, 190, 280)   # 離島區塊 (x, y, 寬, 高)
 
 # 資料裡的名稱 → 專案設定表用的名稱（要跟 app.js 的 EVENTS.city 對得上）
 NAME_FIX = {
@@ -104,29 +109,38 @@ def main(src, out=None):
         kept_pts += sum(len(r) for r in rings)
         counties.append({"name": name, "rings": rings})
 
-    all_pts = [p for c in counties for r in c["rings"] for p in r]
-    lons = [p[0] for p in all_pts]
-    lats = [p[1] for p in all_pts]
-    lon0, lon1 = min(lons), max(lons)
-    lat0, lat1 = min(lats), max(lats)
+    def make_projection(subset, box):
+        """把一群縣市投影到指定的方框內，回傳 project 函式"""
+        pts = [p for c in subset for r in c["rings"] for p in r]
+        lons = [p[0] for p in pts]
+        lats = [p[1] for p in pts]
+        lon0, lon1 = min(lons), max(lons)
+        lat0, lat1 = min(lats), max(lats)
+        # 等距圓柱投影，依緯度修正 x 方向的壓縮（台灣約在北緯 23.5 度）
+        kx = math.cos(math.radians((lat0 + lat1) / 2))
+        span_x = max((lon1 - lon0) * kx, 1e-9)
+        span_y = max(lat1 - lat0, 1e-9)
+        bx, by, bw, bh = box
+        scale = min(bw / span_x, bh / span_y)
+        off_x = bx + (bw - span_x * scale) / 2
+        off_y = by + (bh - span_y * scale) / 2
 
-    # 等距圓柱投影，依緯度修正 x 方向的壓縮（台灣約在北緯 23.5 度）
-    mid_lat = math.radians((lat0 + lat1) / 2)
-    kx = math.cos(mid_lat)
-    span_x = (lon1 - lon0) * kx
-    span_y = lat1 - lat0
-    scale = min(VIEW_W / span_x, VIEW_H / span_y) * 0.96
-    off_x = (VIEW_W - span_x * scale) / 2
-    off_y = (VIEW_H - span_y * scale) / 2
+        def project(lon, lat):
+            x = (lon - lon0) * kx * scale + off_x
+            y = (lat1 - lat) * scale + off_y   # 緯度往上，SVG y 往下
+            return round(x, 1), round(y, 1)
+        return project
 
-    def project(lon, lat):
-        x = (lon - lon0) * kx * scale + off_x
-        y = (lat1 - lat) * scale + off_y      # 緯度往上，SVG y 往下
-        return round(x, 1), round(y, 1)
+    main_isl = [c for c in counties if c["name"] not in OUTLYING]
+    outly = [c for c in counties if c["name"] in OUTLYING]
 
-    # 產生路徑字串
+    # 本島用整張畫布（留一點邊），離島另外縮小放左下角
+    proj_main = make_projection(main_isl, (10, 12, VIEW_W - 20, VIEW_H - 24))
+    proj_out = make_projection(outly, INSET_BOX) if outly else None
+
     out_data = []
     for c in counties:
+        project = proj_out if c["name"] in OUTLYING else proj_main
         d = []
         for ring in c["rings"]:
             pts = [project(*p) for p in ring]
@@ -136,7 +150,8 @@ def main(src, out=None):
         cx = sum(p[0] for p in big) / len(big)
         cy = sum(p[1] for p in big) / len(big)
         lx, ly = project(cx, cy)
-        out_data.append({"name": c["name"], "d": "".join(d), "cx": lx, "cy": ly})
+        out_data.append({"name": c["name"], "d": "".join(d), "cx": lx, "cy": ly,
+                         "outlying": c["name"] in OUTLYING})
 
     out_data.sort(key=lambda c: c["name"])
 

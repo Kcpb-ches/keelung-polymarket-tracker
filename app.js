@@ -12,7 +12,7 @@
 
 // 版號跟 index.html 的 ?v= 對應。若 console 印出的版號跟你剛改的不一樣，
 // 代表瀏覽器讀的是快取的舊檔，按 Cmd+Shift+R 強制重新載入。
-const APP_VERSION = 14;
+const APP_VERSION = 15;
 console.log(`[選舉賭盤監控] app.js v${APP_VERSION}`);
 
 // ── 設定 ────────────────────────────────────────────────────
@@ -559,7 +559,7 @@ function renderMap() {
   if (svg.dataset.built) return;          // 只畫一次
   svg.setAttribute('viewBox', `0 0 ${TW_MAP.w} ${TW_MAP.h}`);
 
-  svg.innerHTML = TW_MAP.counties.map((c) => {
+  const counties = TW_MAP.counties.map((c) => {
     const ev = eventByCity(c.name);
     const cls = ev ? 'county has-event' : 'county no-event';
     // 有盤口的縣市才標名稱，避免畫面太雜
@@ -571,6 +571,14 @@ function renderMap() {
       <path d="${c.d}"/>${label}
     </g>`;
   }).join('');
+
+  // 離島是另外縮小擺放的，比例與本島不同，標示清楚以免誤讀相對大小與距離
+  const hasOutlying = TW_MAP.counties.some((c) => c.outlying);
+  const inset = hasOutlying
+    ? `<g class="inset-note"><text x="20" y="686">離島（非實際比例與位置）</text></g>`
+    : '';
+
+  svg.innerHTML = counties + inset;
 
   const tip = $('mapTip');
   svg.querySelectorAll('.county').forEach((g) => {
