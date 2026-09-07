@@ -49,7 +49,10 @@ SEEN_WALLETS_PATH = os.path.join(ROOT, "seen_wallets.json")
 # 前端讀這個檔，所以沒有 VPN 也看得到。
 PROFILES_PATH = os.path.join(ROOT, "wallet-profiles.json")
 PROFILE_WORKERS = 8        # 平行連線數，別調太高以免被限流
-PROFILE_REFRESH = 150      # 每輪最多刷新幾個既有錢包的預測次數
+# 每輪最多刷新幾個既有錢包的預測次數。
+# 要讓所有錢包都能在 PROFILE_STALE_H 內輪到一次：錢包數 ÷ 這個值 × 3 小時 < 24 小時。
+# 19 個縣市約 600～700 個錢包，設 300 可在 6～9 小時內跑完一輪。
+PROFILE_REFRESH = 300
 PROFILE_STALE_H = 24       # 超過幾小時才需要刷新
 
 # 通知信的暫存檔（不 commit）。有新錢包時才產生，workflow 靠它判斷要不要寄信。
@@ -92,6 +95,31 @@ EVENTS = [
         "Huang Hung-cheng": "黃宏成", "Chen Chia-ping": "陳家平", "Chen Kai-huang": "陳凱煌"}},
     {"id": 848436, "slug": "miaoli", "city": "苗栗縣", "office": "縣長", "zh": {
         "Chung Tung-chin": "鍾東錦", "Chen Pin-an": "陳品安"}},
+    {"id": 848407, "slug": "taichung", "city": "臺中市", "office": "市長", "zh": {
+        "Johnny Chiang": "江啟臣", "Yang Chiung-ying": "楊瓊瓔", "Ho Hsin-chun": "何欣純"}},
+    {"id": 848408, "slug": "tainan", "city": "臺南市", "office": "市長", "zh": {
+        "Chen Ting-fei": "陳亭妃", "Hsieh Lung-chieh": "謝龍介",
+        "Lin Yi-feng": "林宜瑾", "Lin Chun-hsien": "林俊憲"}},
+    # ⚠️ 彰化的 Wei Ping-cheng、Hung Jung-chang 中譯未確認，留英文拼音
+    {"id": 848438, "slug": "changhua", "city": "彰化縣", "office": "縣長", "zh": {
+        "Chen Su-yueh": "陳素月", "Lin Shih-hsien": "林世賢",
+        "Chiu Chien-fu": "邱建富", "Huang Hsiu-fang": "黃秀芳"}},
+    # ⚠️ 南投的 Wen Shih-cheng 中譯未確認
+    {"id": 848447, "slug": "nantou", "city": "南投縣", "office": "縣長", "zh": {
+        "Hsu Shu-hua": "許淑華"}},
+    {"id": 848448, "slug": "yunlin", "city": "雲林縣", "office": "縣長", "zh": {
+        "Chang Chia-chun": "張嘉郡", "Liu Chien-kuo": "劉建國"}},
+    # ⚠️ 嘉義縣的 Wu Pin-jui、Tsai Sung-yi 中譯未確認
+    {"id": 848449, "slug": "chiayi-county", "city": "嘉義縣", "office": "縣長", "zh": {
+        "Tsai Yi-yu": "蔡易餘"}},
+    {"id": 848479, "slug": "pingtung", "city": "屏東縣", "office": "縣長", "zh": {
+        "Chou Chun-mi": "周春米", "Su Ching-chuan": "蘇清泉"}},
+    # ⚠️ 花蓮的 Yu Shu-chen（目前領先）、Yeh Yao-hui、Lo Pei-chin 中譯未確認
+    {"id": 848480, "slug": "hualien", "city": "花蓮縣", "office": "縣長", "zh": {
+        "Wei Chia-hsien": "魏嘉賢", "Chang Chun": "張峻"}},
+    # ⚠️ 臺東的 Wu Hsiu-hua（目前領先）、Li Wu Ying-chih 中譯未確認
+    {"id": 848481, "slug": "taitung", "city": "臺東縣", "office": "縣長", "zh": {
+        "Chen Ying": "陳瑩"}},
 ]
 
 

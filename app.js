@@ -12,7 +12,7 @@
 
 // 版號跟 index.html 的 ?v= 對應。若 console 印出的版號跟你剛改的不一樣，
 // 代表瀏覽器讀的是快取的舊檔，按 Cmd+Shift+R 強制重新載入。
-const APP_VERSION = 11;
+const APP_VERSION = 12;
 console.log(`[選舉賭盤監控] app.js v${APP_VERSION}`);
 
 // ── 設定 ────────────────────────────────────────────────────
@@ -124,6 +124,78 @@ const EVENTS = [
     candidates: {
       'Chung Tung-chin': { zh: '鍾東錦', party: 'tbd', partyZh: '' },
       'Chen Pin-an':     { zh: '陳品安', party: 'tbd', partyZh: '' },
+    },
+  },
+  {
+    id: 848407, slug: 'taichung', city: '臺中市', office: '市長',
+    candidates: {
+      'Johnny Chiang':    { zh: '江啟臣', party: 'kmt', partyZh: '國民黨' },
+      'Yang Chiung-ying': { zh: '楊瓊瓔', party: 'kmt', partyZh: '國民黨' },
+      'Ho Hsin-chun':     { zh: '何欣純', party: 'dpp', partyZh: '民進黨' },
+    },
+  },
+  {
+    id: 848408, slug: 'tainan', city: '臺南市', office: '市長',
+    candidates: {
+      'Chen Ting-fei':    { zh: '陳亭妃', party: 'dpp', partyZh: '民進黨' },
+      'Hsieh Lung-chieh': { zh: '謝龍介', party: 'kmt', partyZh: '國民黨' },
+      'Lin Yi-feng':      { zh: '林宜瑾', party: 'dpp', partyZh: '民進黨' },
+      'Lin Chun-hsien':   { zh: '林俊憲', party: 'dpp', partyZh: '民進黨' },
+    },
+  },
+  {
+    id: 848438, slug: 'changhua', city: '彰化縣', office: '縣長',
+    candidates: {
+      'Chen Su-yueh':    { zh: '陳素月', party: 'dpp', partyZh: '民進黨' },
+      'Lin Shih-hsien':  { zh: '林世賢', party: 'tbd', partyZh: '' },
+      'Chiu Chien-fu':   { zh: '邱建富', party: 'tbd', partyZh: '' },
+      'Huang Hsiu-fang': { zh: '黃秀芳', party: 'dpp', partyZh: '民進黨' },
+      // ⚠️ 以下兩位中譯未確認，暫留英文拼音
+      // 'Wei Ping-cheng':  { zh: '?', party: 'tbd', partyZh: '' },
+      // 'Hung Jung-chang': { zh: '?', party: 'tbd', partyZh: '' },
+    },
+  },
+  {
+    id: 848447, slug: 'nantou', city: '南投縣', office: '縣長',
+    candidates: {
+      'Hsu Shu-hua': { zh: '許淑華', party: 'kmt', partyZh: '國民黨' },
+      // ⚠️ Wen Shih-cheng 中譯未確認，暫留英文拼音
+    },
+  },
+  {
+    id: 848448, slug: 'yunlin', city: '雲林縣', office: '縣長',
+    candidates: {
+      'Chang Chia-chun': { zh: '張嘉郡', party: 'kmt', partyZh: '國民黨' },
+      'Liu Chien-kuo':   { zh: '劉建國', party: 'dpp', partyZh: '民進黨' },
+    },
+  },
+  {
+    id: 848449, slug: 'chiayi-county', city: '嘉義縣', office: '縣長',
+    candidates: {
+      'Tsai Yi-yu': { zh: '蔡易餘', party: 'dpp', partyZh: '民進黨' },
+      // ⚠️ Wu Pin-jui、Tsai Sung-yi 中譯未確認，暫留英文拼音
+    },
+  },
+  {
+    id: 848479, slug: 'pingtung', city: '屏東縣', office: '縣長',
+    candidates: {
+      'Chou Chun-mi':   { zh: '周春米', party: 'dpp', partyZh: '民進黨' },
+      'Su Ching-chuan': { zh: '蘇清泉', party: 'kmt', partyZh: '國民黨' },
+    },
+  },
+  {
+    id: 848480, slug: 'hualien', city: '花蓮縣', office: '縣長',
+    candidates: {
+      'Wei Chia-hsien': { zh: '魏嘉賢', party: 'tbd', partyZh: '' },
+      'Chang Chun':     { zh: '張峻', party: 'tbd', partyZh: '' },
+      // ⚠️ Yu Shu-chen（目前領先）、Yeh Yao-hui、Lo Pei-chin 中譯未確認，暫留英文拼音
+    },
+  },
+  {
+    id: 848481, slug: 'taitung', city: '臺東縣', office: '縣長',
+    candidates: {
+      'Chen Ying': { zh: '陳瑩', party: 'dpp', partyZh: '民進黨' },
+      // ⚠️ Wu Hsiu-hua（目前領先）、Li Wu Ying-chih 中譯未確認，暫留英文拼音
     },
   },
 ];
