@@ -12,7 +12,7 @@
 
 // 版號跟 index.html 的 ?v= 對應。若 console 印出的版號跟你剛改的不一樣，
 // 代表瀏覽器讀的是快取的舊檔，按 Cmd+Shift+R 強制重新載入。
-const APP_VERSION = 9;
+const APP_VERSION = 10;
 console.log(`[選舉賭盤監控] app.js v${APP_VERSION}`);
 
 // ── 設定 ────────────────────────────────────────────────────
@@ -208,6 +208,9 @@ function candInfo(title) {
 function polygonscanTx(h)      { return `https://polygonscan.com/tx/${h}`; }
 function polygonscanAddr(a)    { return `https://polygonscan.com/address/${a}`; }
 function polymarketProfile(a)  { return `https://polymarket.com/profile/${a}`; }
+
+/** OKLink 的 Polygon 位址頁（繁中介面），另一個鏈上瀏覽器視角 */
+function oklinkAddr(a)         { return `https://www.oklink.com/zh-hant/polygon/address/${a}`; }
 
 /**
  * relay.link 的跨鏈轉帳查詢。
@@ -831,6 +834,9 @@ function renderWallets(rows) {
         <a class="link mono" href="${polygonscanAddr(w.wallet)}" target="_blank" rel="noopener" title="${w.wallet}">${shortAddr(w.wallet)}</a>
         ${copyBtn(w.wallet, '複製錢包')}
         <span class="wallet-links">
+          <a class="link" href="${oklinkAddr(w.wallet)}" target="_blank" rel="noopener"
+             title="在 OKLink 檢視這個錢包的鏈上紀錄（繁中介面）">OKLink ↗</a>
+          <span class="dot">·</span>
           <a class="link" href="${polymarketProfile(w.wallet)}" target="_blank" rel="noopener">Polymarket ↗</a>
           <span class="dot">·</span>
           <a class="link" href="${relayLinkAddr(w.wallet)}" target="_blank" rel="noopener"

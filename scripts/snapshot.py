@@ -457,6 +457,9 @@ def _wallet_rows(wallets: list, cross: dict) -> str:
               <a href="https://polygonscan.com/address/{html.escape(w['wallet'])}"
                  style="color:#0969da;text-decoration:none">Polygonscan ↗</a>
               &nbsp;·&nbsp;
+              <a href="https://www.oklink.com/zh-hant/polygon/address/{html.escape(w['wallet'])}"
+                 style="color:#0969da;text-decoration:none">OKLink ↗</a>
+              &nbsp;·&nbsp;
               <a href="https://polymarket.com/profile/{html.escape(w['wallet'])}"
                  style="color:#0969da;text-decoration:none">Polymarket ↗</a>
               &nbsp;·&nbsp;
