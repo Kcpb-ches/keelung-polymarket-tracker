@@ -83,16 +83,16 @@ EVENTS = [
         "Lai Jui-lung": "賴瑞隆", "Ko Chih-en": "柯志恩", "Chang Ching": "張清",
         "Hsu Chih-chieh": "許智傑", "Chiu Yi-ying": "邱議瑩", "Lin Tai-hua": "林岱樺"}},
     {"id": 848435, "slug": "hsinchu-city", "city": "新竹市", "office": "市長", "zh": {
-        "Ann Kao": "高虹安", "Chuang Ching-cheng": "莊敬誠", "Ho Chih-yung": "何志勇"}},
+        "Ann Kao": "高虹安", "Chuang Ching-cheng": "莊競程", "Ho Chih-yung": "何志勇"}},
     {"id": 848418, "slug": "hsinchu-county", "city": "新竹縣", "office": "縣長", "zh": {
         "Hsu Hsin-ying": "徐欣瑩", "Cheng Chao-fang": "鄭朝方",
         "Lin Szu-ming": "林思銘", "Chen Chien-hsien": "陳見賢"}},
     {"id": 848417, "slug": "yilan", "city": "宜蘭縣", "office": "縣長", "zh": {
-        "Lin Kuo-chang": "林國彰", "Wu Tsung-hsien": "吳宗憲",
+        "Lin Kuo-chang": "林國漳", "Wu Tsung-hsien": "吳宗憲",
         "Chen Wan-hui": "陳琬惠", "Chang Sheng-te": "張勝得"}},
     {"id": 848453, "slug": "chiayi-city", "city": "嘉義市", "office": "市長", "zh": {
-        "Wang Mei-hui": "王美惠", "Chang Chi-kai": "張其楷", "Weng Shou-liang": "翁淑良",
-        "Huang Hung-cheng": "黃宏成", "Chen Chia-ping": "陳家平", "Chen Kai-huang": "陳凱煌"}},
+        "Wang Mei-hui": "王美惠", "Chang Chi-kai": "張啓楷", "Weng Shou-liang": "翁淑良",
+        "Huang Hung-cheng": "黃宏成", "Chen Chia-ping": "陳家平", "Chen Kai-huang": "陳愷璜"}},
     {"id": 848436, "slug": "miaoli", "city": "苗栗縣", "office": "縣長", "zh": {
         "Chung Tung-chin": "鍾東錦", "Chen Pin-an": "陳品安"}},
     {"id": 848407, "slug": "taichung", "city": "臺中市", "office": "市長", "zh": {
@@ -100,26 +100,25 @@ EVENTS = [
     {"id": 848408, "slug": "tainan", "city": "臺南市", "office": "市長", "zh": {
         "Chen Ting-fei": "陳亭妃", "Hsieh Lung-chieh": "謝龍介",
         "Lin Yi-feng": "林宜瑾", "Lin Chun-hsien": "林俊憲"}},
-    # ⚠️ 彰化的 Wei Ping-cheng、Hung Jung-chang 中譯未確認，留英文拼音
+    # ⚠️ 彰化的 Hung Jung-chang 中譯未確認，留英文拼音
     {"id": 848438, "slug": "changhua", "city": "彰化縣", "office": "縣長", "zh": {
-        "Chen Su-yueh": "陳素月", "Lin Shih-hsien": "林世賢",
+        "Wei Ping-cheng": "魏平政", "Chen Su-yueh": "陳素月", "Lin Shih-hsien": "林世賢",
         "Chiu Chien-fu": "邱建富", "Huang Hsiu-fang": "黃秀芳"}},
-    # ⚠️ 南投的 Wen Shih-cheng 中譯未確認
     {"id": 848447, "slug": "nantou", "city": "南投縣", "office": "縣長", "zh": {
-        "Hsu Shu-hua": "許淑華"}},
+        "Hsu Shu-hua": "許淑華", "Wen Shih-cheng": "溫世政"}},
     {"id": 848448, "slug": "yunlin", "city": "雲林縣", "office": "縣長", "zh": {
         "Chang Chia-chun": "張嘉郡", "Liu Chien-kuo": "劉建國"}},
-    # ⚠️ 嘉義縣的 Wu Pin-jui、Tsai Sung-yi 中譯未確認
+    # ⚠️ 嘉義縣的 Tsai Sung-yi 中譯未確認
     {"id": 848449, "slug": "chiayi-county", "city": "嘉義縣", "office": "縣長", "zh": {
-        "Tsai Yi-yu": "蔡易餘"}},
+        "Tsai Yi-yu": "蔡易餘", "Wu Pin-jui": "吳品叡"}},
     {"id": 848479, "slug": "pingtung", "city": "屏東縣", "office": "縣長", "zh": {
         "Chou Chun-mi": "周春米", "Su Ching-chuan": "蘇清泉"}},
-    # ⚠️ 花蓮的 Yu Shu-chen（目前領先）、Yeh Yao-hui、Lo Pei-chin 中譯未確認
+    # ⚠️ 花蓮的 Yeh Yao-hui 中譯未確認
     {"id": 848480, "slug": "hualien", "city": "花蓮縣", "office": "縣長", "zh": {
-        "Wei Chia-hsien": "魏嘉賢", "Chang Chun": "張峻"}},
-    # ⚠️ 臺東的 Wu Hsiu-hua（目前領先）、Li Wu Ying-chih 中譯未確認
+        "Yu Shu-chen": "游淑貞", "Wei Chia-hsien": "魏嘉賢",
+        "Chang Chun": "張峻", "Lo Pei-chin": "羅佩秦"}},
     {"id": 848481, "slug": "taitung", "city": "臺東縣", "office": "縣長", "zh": {
-        "Chen Ying": "陳瑩"}},
+        "Wu Hsiu-hua": "吳秀華", "Chen Ying": "陳瑩", "Li Wu Ying-chih": "李吳穎智"}},
 ]
 
 

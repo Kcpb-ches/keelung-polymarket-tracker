@@ -12,7 +12,7 @@
 
 // 版號跟 index.html 的 ?v= 對應。若 console 印出的版號跟你剛改的不一樣，
 // 代表瀏覽器讀的是快取的舊檔，按 Cmd+Shift+R 強制重新載入。
-const APP_VERSION = 12;
+const APP_VERSION = 13;
 console.log(`[選舉賭盤監控] app.js v${APP_VERSION}`);
 
 // ── 設定 ────────────────────────────────────────────────────
@@ -85,25 +85,26 @@ const EVENTS = [
   {
     id: 848435, slug: 'hsinchu-city', city: '新竹市', office: '市長',
     candidates: {
-      'Ann Kao':            { zh: '高虹安', party: 'tpp', partyZh: '民眾黨' },
-      'Chuang Ching-cheng': { zh: '莊敬誠', party: 'tbd', partyZh: '' },
-      'Ho Chih-yung':       { zh: '何志勇', party: 'tbd', partyZh: '' },
+      'Ann Kao':            { zh: '高虹安', party: 'tbd', partyZh: '無黨籍' },
+      'Chuang Ching-cheng': { zh: '莊競程', party: 'dpp', partyZh: '民進黨' },
+      'Ho Chih-yung':       { zh: '何志勇', party: 'tbd', partyZh: '無黨籍' },
     },
   },
   {
     id: 848418, slug: 'hsinchu-county', city: '新竹縣', office: '縣長',
     candidates: {
-      'Hsu Hsin-ying':    { zh: '徐欣瑩', party: 'tbd', partyZh: '' },
+      'Hsu Hsin-ying':    { zh: '徐欣瑩', party: 'kmt', partyZh: '國民黨' },
       'Cheng Chao-fang':  { zh: '鄭朝方', party: 'dpp', partyZh: '民進黨' },
       'Lin Szu-ming':     { zh: '林思銘', party: 'kmt', partyZh: '國民黨' },
-      'Chen Chien-hsien': { zh: '陳見賢', party: 'tbd', partyZh: '' },
+      'Chen Chien-hsien': { zh: '陳見賢', party: 'kmt', partyZh: '國民黨' },
     },
   },
   {
     id: 848417, slug: 'yilan', city: '宜蘭縣', office: '縣長',
     candidates: {
-      'Lin Kuo-chang':  { zh: '林國彰', party: 'tbd', partyZh: '' },
-      'Wu Tsung-hsien': { zh: '吳宗憲', party: 'tbd', partyZh: '' },
+      'Lin Kuo-chang':  { zh: '林國漳', party: 'dpp', partyZh: '民進黨' },
+      'Wu Tsung-hsien': { zh: '吳宗憲', party: 'kmt', partyZh: '國民黨' },
+      // 以下兩位未見於 2026-09-07 的參選名單，中譯沿用先前對照
       'Chen Wan-hui':   { zh: '陳琬惠', party: 'tbd', partyZh: '' },
       'Chang Sheng-te': { zh: '張勝得', party: 'tbd', partyZh: '' },
     },
@@ -112,18 +113,19 @@ const EVENTS = [
     id: 848453, slug: 'chiayi-city', city: '嘉義市', office: '市長',
     candidates: {
       'Wang Mei-hui':     { zh: '王美惠', party: 'dpp', partyZh: '民進黨' },
-      'Chang Chi-kai':    { zh: '張其楷', party: 'tbd', partyZh: '' },
+      'Chang Chi-kai':    { zh: '張啓楷', party: 'tpp', partyZh: '民眾黨' },
+      'Huang Hung-cheng': { zh: '黃宏成', party: 'tbd', partyZh: '無黨籍' },
+      'Chen Kai-huang':   { zh: '陳愷璜', party: 'tbd', partyZh: '無黨籍' },
+      // 以下兩位未見於 2026-09-07 的參選名單，中譯沿用先前對照
       'Weng Shou-liang':  { zh: '翁淑良', party: 'tbd', partyZh: '' },
-      'Huang Hung-cheng': { zh: '黃宏成', party: 'tbd', partyZh: '' },
       'Chen Chia-ping':   { zh: '陳家平', party: 'tbd', partyZh: '' },
-      'Chen Kai-huang':   { zh: '陳凱煌', party: 'tbd', partyZh: '' },
     },
   },
   {
     id: 848436, slug: 'miaoli', city: '苗栗縣', office: '縣長',
     candidates: {
-      'Chung Tung-chin': { zh: '鍾東錦', party: 'tbd', partyZh: '' },
-      'Chen Pin-an':     { zh: '陳品安', party: 'tbd', partyZh: '' },
+      'Chung Tung-chin': { zh: '鍾東錦', party: 'kmt', partyZh: '國民黨' },
+      'Chen Pin-an':     { zh: '陳品安', party: 'dpp', partyZh: '民進黨' },
     },
   },
   {
@@ -146,20 +148,20 @@ const EVENTS = [
   {
     id: 848438, slug: 'changhua', city: '彰化縣', office: '縣長',
     candidates: {
+      'Wei Ping-cheng':  { zh: '魏平政', party: 'kmt', partyZh: '國民黨' },
       'Chen Su-yueh':    { zh: '陳素月', party: 'dpp', partyZh: '民進黨' },
+      'Chiu Chien-fu':   { zh: '邱建富', party: 'tbd', partyZh: '無黨籍' },
+      // 以下未見於 2026-09-07 的參選名單，中譯沿用先前對照
       'Lin Shih-hsien':  { zh: '林世賢', party: 'tbd', partyZh: '' },
-      'Chiu Chien-fu':   { zh: '邱建富', party: 'tbd', partyZh: '' },
-      'Huang Hsiu-fang': { zh: '黃秀芳', party: 'dpp', partyZh: '民進黨' },
-      // ⚠️ 以下兩位中譯未確認，暫留英文拼音
-      // 'Wei Ping-cheng':  { zh: '?', party: 'tbd', partyZh: '' },
-      // 'Hung Jung-chang': { zh: '?', party: 'tbd', partyZh: '' },
+      'Huang Hsiu-fang': { zh: '黃秀芳', party: 'tbd', partyZh: '' },
+      // ⚠️ Hung Jung-chang 中譯仍未確認，保留英文拼音
     },
   },
   {
     id: 848447, slug: 'nantou', city: '南投縣', office: '縣長',
     candidates: {
-      'Hsu Shu-hua': { zh: '許淑華', party: 'kmt', partyZh: '國民黨' },
-      // ⚠️ Wen Shih-cheng 中譯未確認，暫留英文拼音
+      'Hsu Shu-hua':     { zh: '許淑華', party: 'kmt', partyZh: '國民黨' },
+      'Wen Shih-cheng':  { zh: '溫世政', party: 'dpp', partyZh: '民進黨' },
     },
   },
   {
@@ -172,8 +174,9 @@ const EVENTS = [
   {
     id: 848449, slug: 'chiayi-county', city: '嘉義縣', office: '縣長',
     candidates: {
-      'Tsai Yi-yu': { zh: '蔡易餘', party: 'dpp', partyZh: '民進黨' },
-      // ⚠️ Wu Pin-jui、Tsai Sung-yi 中譯未確認，暫留英文拼音
+      'Tsai Yi-yu':  { zh: '蔡易餘', party: 'dpp', partyZh: '民進黨' },
+      'Wu Pin-jui':  { zh: '吳品叡', party: 'tbd', partyZh: '無黨籍' },
+      // ⚠️ Tsai Sung-yi 中譯仍未確認，保留英文拼音
     },
   },
   {
@@ -186,16 +189,19 @@ const EVENTS = [
   {
     id: 848480, slug: 'hualien', city: '花蓮縣', office: '縣長',
     candidates: {
-      'Wei Chia-hsien': { zh: '魏嘉賢', party: 'tbd', partyZh: '' },
-      'Chang Chun':     { zh: '張峻', party: 'tbd', partyZh: '' },
-      // ⚠️ Yu Shu-chen（目前領先）、Yeh Yao-hui、Lo Pei-chin 中譯未確認，暫留英文拼音
+      'Yu Shu-chen':    { zh: '游淑貞', party: 'kmt', partyZh: '國民黨' },
+      'Chang Chun':     { zh: '張峻', party: 'tbd', partyZh: '無黨籍' },
+      'Wei Chia-hsien': { zh: '魏嘉賢', party: 'tbd', partyZh: '無黨籍' },
+      'Lo Pei-chin':    { zh: '羅佩秦', party: 'tbd', partyZh: '台灣工黨' },
+      // ⚠️ Yeh Yao-hui 中譯仍未確認，保留英文拼音
     },
   },
   {
     id: 848481, slug: 'taitung', city: '臺東縣', office: '縣長',
     candidates: {
-      'Chen Ying': { zh: '陳瑩', party: 'dpp', partyZh: '民進黨' },
-      // ⚠️ Wu Hsiu-hua（目前領先）、Li Wu Ying-chih 中譯未確認，暫留英文拼音
+      'Wu Hsiu-hua':     { zh: '吳秀華', party: 'kmt', partyZh: '國民黨' },
+      'Chen Ying':       { zh: '陳瑩', party: 'dpp', partyZh: '民進黨' },
+      'Li Wu Ying-chih': { zh: '李吳穎智', party: 'tbd', partyZh: '無黨籍' },
     },
   },
 ];
