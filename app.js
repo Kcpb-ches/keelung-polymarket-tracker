@@ -12,7 +12,7 @@
 
 // 版號跟 index.html 的 ?v= 對應。若 console 印出的版號跟你剛改的不一樣，
 // 代表瀏覽器讀的是快取的舊檔，按 Cmd+Shift+R 強制重新載入。
-const APP_VERSION = 16;
+const APP_VERSION = 17;
 console.log(`[選舉賭盤監控] app.js v${APP_VERSION}`);
 
 // ── 設定 ────────────────────────────────────────────────────
@@ -639,7 +639,10 @@ function showHome() {
   activeEvent = null;
   document.title = '2026 地方選舉 · Polymarket 下注監控';
   $('pageTitle').textContent = '2026 台灣地方選舉 · Polymarket 下注監控';
+  nwMode = false;
+  $('metaTail').style.display = '';
   $('cityView').style.display = 'none';
+  $('newWalletsView').style.display = 'none';
   $('sourceNotice').style.display = 'none';
   $('mapHome').style.display = '';
   $('sourceBadge').className = 'badge badge-loading';
@@ -651,16 +654,20 @@ function showHome() {
 }
 
 function renderTabs() {
-  const home = `<button class="city-tab tab-home ${!activeEvent ? 'active' : ''}"
+  const home = `<button class="city-tab tab-home ${!activeEvent && !nwMode ? 'active' : ''}"
       data-slug="home" type="button" title="回到地圖首頁">🗺 地圖</button>`;
-  $('cityTabs').innerHTML = home + EVENTS.map((e) => `
+  // 新進錢包是跨縣市的彙整，排在地圖後面、各縣市前面，跟縣市頁籤同一層
+  const nw = `<button class="city-tab tab-nw ${nwMode ? 'active' : ''}"
+      data-slug="${NEW_WALLETS_SLUG}" type="button"
+      title="所有縣市第一次出現的錢包，跟通知信同一份資料">🔔 新進錢包通知</button>`;
+  $('cityTabs').innerHTML = home + nw + EVENTS.map((e) => `
     <button class="city-tab ${e === activeEvent ? 'active' : ''}" data-slug="${e.slug}" type="button">
       ${escapeHtml(e.city)}
     </button>`).join('');
 
   $('cityTabs').querySelectorAll('.city-tab').forEach((b) => {
     b.addEventListener('click', () => {
-      const cur = activeEvent ? activeEvent.slug : 'home';
+      const cur = nwMode ? NEW_WALLETS_SLUG : (activeEvent ? activeEvent.slug : 'home');
       if (b.dataset.slug === cur) return;
       location.hash = b.dataset.slug;   // 交給 hashchange 統一處理
     });
@@ -669,10 +676,14 @@ function renderTabs() {
 
 /** 切換縣市：把所有跟舊縣市有關的狀態清乾淨，再重新載入 */
 function switchEvent(next) {
-  if (next === activeEvent) return;
+  // 從新進錢包頁切回來時 activeEvent 是 null，光比 next 會誤判成「沒換頁」
+  if (next === activeEvent && !nwMode) return;
   if (!next) { showHome(); return; }      // 回地圖首頁
+  nwMode = false;
   activeEvent = next;
+  $('metaTail').style.display = '';
   $('mapHome').style.display = 'none';
+  $('newWalletsView').style.display = 'none';
   $('cityView').style.display = '';
 
   markets = [];
@@ -1286,7 +1297,7 @@ function initFilterUI() {
   document.querySelector('.view-btn[data-view="table"]').classList.add('active');
 
   $('downloadCsv').addEventListener('click', downloadCsv);
-  $('refreshBtn').addEventListener('click', () => loadData(true));
+  $('refreshBtn').addEventListener('click', () => (nwMode ? loadNewWallets(true) : loadData(true)));
 }
 
 // ── 主題 ────────────────────────────────────────────────────
@@ -1302,17 +1313,415 @@ function initTheme() {
   });
 }
 
+// ── 新進錢包通知 ────────────────────────────────────────────
+/**
+ * 這一頁跟縣市頁不一樣：它不打 Polymarket API，而是讀 GitHub Actions 產生的
+ * new-wallets.json。兩個理由：
+ *
+ *   1) 「這個錢包是不是第一次出現」要跟歷史名冊比對才知道，光看當下抓回來的
+ *      成交明細算不出來——那是 snapshot.py 的職責，結果存在那支檔案裡。
+ *   2) 這樣沒有 VPN 也看得到，而且跟寄出去的通知信是同一份資料，不會對不上。
+ *
+ * 每筆代表一個錢包在某個縣市的「首航」，同一個錢包在不同縣市會各有一筆。
+ */
+const NEW_WALLETS_SLUG = 'new-wallets';
+
+let nwMode      = false;   // 是否正在看這一頁
+let nwAll       = null;    // 正規化後的完整名單，載入一次就快取
+let nwCross     = {};      // 錢包 → 出現過的縣市陣列，用來判斷跨縣市
+let nwUpdatedAt = null;
+let nwFilters   = { search: '', city: '', start: '', end: '', crossOnly: false };
+let nwSortCol   = 'ts';
+let nwSortDir   = 'desc';
+let nwPage      = 1;
+let nwPageSize  = 50;
+
+/** 從 EVENTS 設定表反查政黨，好讓候選人 chip 的顏色跟縣市頁一致 */
+function nwPartyOf(slug, zh) {
+  const ev = EVENTS.find((e) => e.slug === slug);
+  if (!ev) return 'tbd';
+  const hit = Object.values(ev.candidates).find((c) => c.zh === zh);
+  return hit ? hit.party : 'tbd';
+}
+
+function nwNormalize(list) {
+  return list.map((w) => ({
+    ts:      (w.first_timestamp || 0) * 1000,
+    city:    w.city || '',
+    slug:    w.slug || '',
+    wallet:  (w.wallet || '').toLowerCase(),
+    name:    w.name || '',
+    isAnon:  !w.name,
+    cand:    w.candidate || '',
+    party:   nwPartyOf(w.slug, w.candidate),
+    outcome: w.outcome === 'Yes' ? 'Yes' : 'No',
+    side:    w.side === 'BUY' ? 'BUY' : 'SELL',
+    size:    Number(w.size) || 0,
+    price:   Number(w.price) || 0,
+    total:   Number(w.total) || 0,
+    hash:    w.tx || '',
+  }));
+}
+
+/** 錢包 → 它出現過的縣市。跨兩個以上縣市的錢包通常最值得看。 */
+function nwBuildCross(rows) {
+  const m = {};
+  rows.forEach((r) => {
+    if (!m[r.wallet]) m[r.wallet] = new Set();
+    m[r.wallet].add(r.city);
+  });
+  const out = {};
+  Object.keys(m).forEach((w) => { out[w] = [...m[w]].sort(); });
+  return out;
+}
+
+async function loadNewWallets(manual = false) {
+  const btn = $('refreshBtn');
+  if (manual) { btn.classList.add('spinning'); nwAll = null; }
+
+  if (!nwAll) {
+    try {
+      const d = await fetchJson(`new-wallets.json?t=${Date.now()}`, 20000);
+      nwAll = nwNormalize(d.wallets || []);
+      nwCross = nwBuildCross(nwAll);
+      nwUpdatedAt = d.updated_at || null;
+    } catch (e) {
+      console.error('[新進錢包名單讀取失敗]', e.message);
+      $('nwBody').innerHTML = `<div class="empty">
+        讀不到 new-wallets.json（${escapeHtml(e.message)}）。<br>
+        這份名單由 GitHub Actions 每 3 小時產生一次，若是剛部署完請稍等一輪再試。
+      </div>`;
+      $('lastUpdate').textContent = '名單讀取失敗';
+      setTimeout(() => btn.classList.remove('spinning'), 300);
+      return;
+    }
+  }
+
+  if (!nwMode) return;      // 載入途中已經切走，結果作廢
+  nwFillCityOptions();
+  nwRender();
+  setTimeout(() => btn.classList.remove('spinning'), 300);
+}
+
+/** 縣市下拉：只列名單裡真的有資料的縣市，並附上筆數 */
+function nwFillCityOptions() {
+  const sel = $('nwCity');
+  if (!sel || !nwAll) return;
+  const count = {};
+  nwAll.forEach((r) => { count[r.city] = (count[r.city] || 0) + 1; });
+  const cities = EVENTS.map((e) => e.city).filter((c) => count[c]);
+  sel.innerHTML = `<option value="">全部縣市（${fmtInt(nwAll.length)}）</option>` +
+    cities.map((c) => `<option value="${escapeHtml(c)}" ${nwFilters.city === c ? 'selected' : ''}>
+      ${escapeHtml(c)}（${fmtInt(count[c])}）</option>`).join('');
+}
+
+function nwApplyFilters() {
+  const f = nwFilters;
+  const kw = f.search.trim().toLowerCase();
+  const a = dateToMs(f.start);
+  const b = dateToMs(f.end, true);
+  return (nwAll || []).filter((r) => {
+    if (f.city && r.city !== f.city) return false;
+    if (f.crossOnly && (nwCross[r.wallet] || []).length < 2) return false;
+    if (a !== null && r.ts < a) return false;
+    if (b !== null && r.ts > b) return false;
+    if (kw && !(r.name.toLowerCase().includes(kw) || r.wallet.includes(kw))) return false;
+    return true;
+  });
+}
+
+function nwSortRows(rows) {
+  const dir = nwSortDir === 'asc' ? 1 : -1;
+  const pick = (r) => ({
+    ts: r.ts, city: r.city, cand: r.cand, total: r.total,
+    name: r.isAnon ? '' : r.name,
+  })[nwSortCol];
+  return rows.slice().sort((x, y) => {
+    const a = pick(x), b = pick(y);
+    if (typeof a === 'string' || typeof b === 'string') {
+      return String(a).localeCompare(String(b), 'zh-TW') * dir;
+    }
+    return ((a || 0) - (b || 0)) * dir;
+  });
+}
+
+function nwSetSort(col) {
+  if (nwSortCol === col) nwSortDir = nwSortDir === 'asc' ? 'desc' : 'asc';
+  else { nwSortCol = col; nwSortDir = col === 'ts' ? 'desc' : 'asc'; }
+  nwRender();
+}
+
+function nwSortIcon(col) {
+  if (nwSortCol !== col) return '<span class="sort-icon">⇅</span>';
+  return `<span class="sort-icon">${nwSortDir === 'asc' ? '↑' : '↓'}</span>`;
+}
+
+function nwRender() {
+  if (!nwAll) return;
+
+  const rows = nwSortRows(nwApplyFilters());
+  const totalPages = Math.max(1, Math.ceil(rows.length / nwPageSize));
+  if (nwPage > totalPages) nwPage = totalPages;
+  const page = nwPageSize >= 1e9 ? rows
+    : rows.slice((nwPage - 1) * nwPageSize, nwPage * nwPageSize);
+
+  // 頂端摘要：這三個數字是這一頁真正要回答的問題
+  const dayAgo = Date.now() - 86400000;
+  const last24 = rows.filter((r) => r.ts >= dayAgo).length;
+  const crossN = new Set(rows.filter((r) => (nwCross[r.wallet] || []).length > 1)
+    .map((r) => r.wallet)).size;
+
+  $('lastUpdate').textContent = nwUpdatedAt
+    ? `名單更新於 ${nwUpdatedAt.slice(0, 16).replace('T', ' ')}`
+    : '名單時間不明';
+
+  const summary = `
+    <div class="nw-summary">
+      <div class="nw-stat"><span class="nw-stat-n">${fmtInt(rows.length)}</span><span class="nw-stat-l">符合條件的新進錢包</span></div>
+      <div class="nw-stat"><span class="nw-stat-n">${fmtInt(last24)}</span><span class="nw-stat-l">最近 24 小時</span></div>
+      <div class="nw-stat"><span class="nw-stat-n">${fmtInt(crossN)}</span><span class="nw-stat-l">跨縣市錢包</span></div>
+    </div>`;
+
+  if (!rows.length) {
+    $('nwBody').innerHTML = summary + '<div class="empty">沒有符合條件的新進錢包，試著放寬篩選條件。</div>';
+    return;
+  }
+
+  const th = (col, label, cls = '') =>
+    `<th class="sortable ${cls} ${nwSortCol === col ? 'sorted' : ''}" data-nwsort="${col}">${label}${nwSortIcon(col)}</th>`;
+
+  const table = `
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        ${th('ts', '首次出現（台北）')}
+        ${th('city', '縣市')}
+        ${th('name', '交易者')}
+        ${th('cand', '候選人')}
+        <th>押注</th>
+        <th>買賣</th>
+        <th class="num">股數</th>
+        <th class="num">成交價</th>
+        ${th('total', '金額 USD', 'num')}
+        <th>錢包地址</th>
+        <th>交易 Hash</th>
+        <th>跨鏈金流</th>
+      </tr></thead>
+      <tbody>
+        ${page.map((r) => {
+          const others = (nwCross[r.wallet] || []).filter((c) => c !== r.city);
+          return `
+          <tr>
+            <td class="mono" title="${timeAgo(r.ts)}">${tpeTime(r.ts)}</td>
+            <td>
+              <a class="link" href="#${r.slug}" title="前往 ${escapeHtml(r.city)}監控頁">${escapeHtml(r.city)}</a>
+              ${others.length ? `<span class="wallet-badge badge-cross" title="這個錢包也出現在：${escapeHtml(others.join('、'))}">跨 ${others.length + 1} 縣市</span>` : ''}
+            </td>
+            <td>${r.isAnon
+                  ? '<span class="trader-anon">未具名</span>'
+                  : `<a class="link" href="${polymarketProfile(r.wallet)}" target="_blank" rel="noopener">${escapeHtml(r.name)}</a>`}</td>
+            <td><span class="cand-chip ${r.party}">${escapeHtml(r.cand)}</span></td>
+            <td><span class="tag-${r.outcome === 'Yes' ? 'yes' : 'no'}">${r.outcome}</span></td>
+            <td><span class="tag-${r.side === 'BUY' ? 'buy' : 'sell'}">${r.side === 'BUY' ? '▲ BUY' : '▼ SELL'}</span></td>
+            <td class="num">${fmt(r.size)}</td>
+            <td class="num">${fmt(r.price, 3)}</td>
+            <td class="num"><b>$${fmt(r.total)}</b></td>
+            <td class="mono">
+              <a class="link" href="${polygonscanAddr(r.wallet)}" target="_blank" rel="noopener" title="${r.wallet}">${shortAddr(r.wallet)}</a>
+              ${copyBtn(r.wallet, '複製錢包')}
+            </td>
+            <td class="mono">
+              ${r.hash
+                ? `<a class="link" href="${polygonscanTx(r.hash)}" target="_blank" rel="noopener" title="${r.hash}">${shortHash(r.hash)}</a>${copyBtn(r.hash, '複製 Hash')}`
+                : '<span class="trader-anon">—</span>'}
+            </td>
+            <td>
+              <a class="link" href="${relayLinkAddr(r.wallet)}" target="_blank" rel="noopener"
+                 title="在 relay.link 查這個錢包的跨鏈轉帳紀錄">Relay ↗</a>
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  </div>`;
+
+  $('nwBody').innerHTML = summary + table + nwPagination(rows.length, totalPages);
+  nwBindBodyEvents(totalPages);
+}
+
+function nwPagination(total, totalPages) {
+  const from = nwPageSize >= 1e9 ? 1 : (nwPage - 1) * nwPageSize + 1;
+  const to = nwPageSize >= 1e9 ? total : Math.min(nwPage * nwPageSize, total);
+  const btns = [];
+  if (nwPageSize < 1e9 && totalPages > 1) {
+    const push = (n) => btns.push(
+      `<button class="page-btn ${n === nwPage ? 'active' : ''}" data-nwpage="${n}">${n}</button>`);
+    if (totalPages <= 7) { for (let i = 1; i <= totalPages; i++) push(i); }
+    else {
+      push(1);
+      if (nwPage > 3) btns.push('<span class="page-ellipsis">…</span>');
+      for (let i = Math.max(2, nwPage - 1); i <= Math.min(totalPages - 1, nwPage + 1); i++) push(i);
+      if (nwPage < totalPages - 2) btns.push('<span class="page-ellipsis">…</span>');
+      push(totalPages);
+    }
+  }
+  return `
+  <div class="pagination">
+    <select class="page-size" id="nwPageSizeSel">
+      ${[25, 50, 100, 200].map((n) => `<option value="${n}" ${nwPageSize === n ? 'selected' : ''}>每頁 ${n} 筆</option>`).join('')}
+      <option value="999999999" ${nwPageSize >= 1e9 ? 'selected' : ''}>顯示全部</option>
+    </select>
+    <button class="page-btn" data-nwpage="prev" ${nwPage === 1 ? 'disabled' : ''}>‹ 上一頁</button>
+    ${btns.join('')}
+    <button class="page-btn" data-nwpage="next" ${nwPage >= totalPages ? 'disabled' : ''}>下一頁 ›</button>
+    <span class="page-info">第 ${fmtInt(from)}–${fmtInt(to)} 筆，共 ${fmtInt(total)} 筆</span>
+  </div>`;
+}
+
+function nwBindBodyEvents(totalPages) {
+  const body = $('nwBody');
+
+  body.querySelectorAll('[data-nwsort]').forEach((el) => {
+    el.addEventListener('click', () => nwSetSort(el.dataset.nwsort));
+  });
+
+  body.querySelectorAll('[data-nwpage]').forEach((b) => {
+    b.addEventListener('click', () => {
+      const v = b.dataset.nwpage;
+      if (v === 'prev') nwPage = Math.max(1, nwPage - 1);
+      else if (v === 'next') nwPage = Math.min(totalPages, nwPage + 1);
+      else nwPage = Number(v);
+      nwRender();
+      window.scrollTo({ top: body.offsetTop - 80, behavior: 'smooth' });
+    });
+  });
+
+  const sel = $('nwPageSizeSel');
+  if (sel) sel.addEventListener('change', () => {
+    nwPageSize = Number(sel.value); nwPage = 1; nwRender();
+  });
+
+  body.querySelectorAll('[data-copy]').forEach((b) => {
+    b.addEventListener('click', async (e) => {
+      e.preventDefault(); e.stopPropagation();
+      try {
+        await navigator.clipboard.writeText(b.dataset.copy);
+        b.textContent = '✓'; b.classList.add('copied');
+        setTimeout(() => { b.textContent = '⧉'; b.classList.remove('copied'); }, 1400);
+      } catch { /* 剪貼簿被擋，忽略 */ }
+    });
+  });
+}
+
+function nwDownloadCsv() {
+  const rows = nwSortRows(nwApplyFilters());
+  if (!rows.length) { alert('目前沒有可匯出的資料'); return; }
+  const head = ['首次出現(台北)', '縣市', '交易者', '候選人', '押注', '買賣',
+                '股數', '成交價', '金額USD', '錢包地址', '交易Hash', '跨縣市'];
+  const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const lines = [head.map(esc).join(',')];
+  rows.forEach((r) => lines.push([
+    tpeTime(r.ts), r.city, r.isAnon ? '未具名' : r.name, r.cand, r.outcome, r.side,
+    r.size, r.price, r.total.toFixed(4), r.wallet, r.hash,
+    (nwCross[r.wallet] || []).join('、'),
+  ].map(esc).join(',')));
+
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `新進錢包通知_${tpeTime(Date.now()).replace(/[: ]/g, '-')}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** 切到新進錢包頁 */
+function showNewWallets() {
+  nwMode = true;
+  activeEvent = null;
+  document.title = '新進錢包通知 · Polymarket 下注監控';
+  $('pageTitle').textContent = '新進錢包通知 · 跨縣市彙整';
+  $('cityView').style.display = 'none';
+  $('mapHome').style.display = 'none';
+  $('sourceNotice').style.display = 'none';
+  $('newWalletsView').style.display = '';
+  $('sourceBadge').className = 'badge badge-snapshot';
+  $('sourceBadge').textContent = '名冊快照';
+  $('lastUpdate').textContent = '載入中…';
+  $('metaTail').style.display = 'none';   // 這頁沒有「成交筆數」也不自動更新
+  renderTabs();
+  loadNewWallets();
+}
+
+function initNewWalletsUI() {
+  const search = $('nwSearch');
+  const clear = $('nwSearchClear');
+  let timer = null;
+  search.addEventListener('input', () => {
+    clear.style.display = search.value ? '' : 'none';
+    clearTimeout(timer);
+    timer = setTimeout(() => { nwFilters.search = search.value; nwPage = 1; nwRender(); }, 250);
+  });
+  clear.addEventListener('click', () => {
+    search.value = ''; clear.style.display = 'none';
+    nwFilters.search = ''; nwPage = 1; nwRender();
+  });
+
+  $('nwCity').addEventListener('change', (e) => {
+    nwFilters.city = e.target.value; nwPage = 1; nwRender();
+  });
+  $('nwStart').addEventListener('change', (e) => {
+    nwFilters.start = e.target.value; nwPage = 1; nwRender();
+  });
+  $('nwEnd').addEventListener('change', (e) => {
+    nwFilters.end = e.target.value; nwPage = 1; nwRender();
+  });
+  $('nwCrossOnly').addEventListener('change', (e) => {
+    nwFilters.crossOnly = e.target.checked; nwPage = 1; nwRender();
+  });
+
+  $('nwReset').addEventListener('click', () => {
+    nwFilters = { search: '', city: '', start: '', end: '', crossOnly: false };
+    search.value = ''; clear.style.display = 'none';
+    $('nwStart').value = ''; $('nwEnd').value = '';
+    $('nwCrossOnly').checked = false;
+    nwPage = 1;
+    nwFillCityOptions();
+    nwRender();
+  });
+
+  $('nwCsv').addEventListener('click', nwDownloadCsv);
+}
+
+/** 網址 hash → 要開哪一頁。新進錢包是縣市以外的第三種去處。 */
+function routeFromHash() {
+  const slug = (location.hash || '').replace(/^#/, '');
+  if (slug === NEW_WALLETS_SLUG) return NEW_WALLETS_SLUG;
+  return eventFromHash();
+}
+
+function goRoute(route) {
+  if (route === NEW_WALLETS_SLUG) {
+    if (!nwMode) showNewWallets();
+    return;
+  }
+  switchEvent(route);
+}
+
 // ── 啟動 ────────────────────────────────────────────────────
 initTheme();
 initFilterUI();
+initNewWalletsUI();
 updatePillLabels();
 
 // 支援上一頁／下一頁與直接貼帶 hash 的網址
-window.addEventListener('hashchange', () => switchEvent(eventFromHash()));
+window.addEventListener('hashchange', () => goRoute(routeFromHash()));
 
-const startEvent = eventFromHash();
-if (startEvent) {
-  activeEvent = startEvent;
+const startRoute = routeFromHash();
+if (startRoute === NEW_WALLETS_SLUG) {
+  showNewWallets();
+} else if (startRoute) {
+  activeEvent = startRoute;
   document.title = `2026 ${activeEvent.city}${activeEvent.office}選舉 · Polymarket 下注監控`;
   $('pageTitle').textContent = `2026 ${activeEvent.city}${activeEvent.office}選舉 · Polymarket 下注`;
   $('cityView').style.display = '';

@@ -92,9 +92,11 @@ keelung_polymarket/
 ├── data-<eventId>.json            ← 各縣市最新快照，前端連不到 API 時讀這個
 │
 ├── scripts/
-│   └── snapshot.py                抓取腳本（純標準庫，不用 pip install）
+│   ├── snapshot.py                抓取腳本（純標準庫，不用 pip install）
+│   └── backfill_new_wallets.py    一次性：回填 new-wallets.json 的歷史資料
 │
 ├── seen_wallets.json              ← 已知錢包名冊，新錢包偵測的依據
+├── new-wallets.json               ← 新進錢包完整明細，「新進錢包通知」頁籤讀這個
 │
 ├── snapshots/
 │   └── YYYY-MM-DD.json            每天一份賠率與統計存檔（不含逐筆明細）
@@ -151,6 +153,34 @@ python3 scripts/snapshot.py
 
 ---
 
+## 新進錢包通知（頁籤）
+
+頁籤列上跟各縣市同一層，有一個 **🔔 新進錢包通知**。它是所有縣市的彙整，
+列出每個錢包**第一次**在某個縣市下注的那一筆交易——跟寄出去的通知信同一份資料，
+差別只在信會過期、這一頁可以隨時回頭查。
+
+資料來自 `new-wallets.json`，由 Actions 每輪產生，所以**沒有 VPN 也看得到**。
+可以依縣市、日期、交易者名稱或錢包地址篩選，也能只看跨縣市錢包，並匯出 CSV。
+
+頂端三個數字分別是：符合目前篩選條件的筆數、最近 24 小時的新進錢包、
+以及其中跨縣市的錢包數。
+
+> 同一個錢包在不同縣市各算一筆（它在每個縣市都有自己的「首航」），
+> 所以列數會比錢包數多。
+
+### 為什麼不是每輪重算
+
+`new-wallets.json` 採**合併寫入**：只補新的，不動既有紀錄。
+
+首筆交易明細是從 `data-*.json` 撈的，而那些檔有 `MAX_OFFSET` 上限。
+等成交筆數成長到截斷，早期錢包的首筆交易會從 `data-*.json` 消失；
+若每輪重建，這份名單會跟著愈縮愈短。合併寫入則是記過就不會掉。
+
+歷史資料由 `scripts/backfill_new_wallets.py` 一次性補齊（2026-09-21 執行，回填 1,447 筆），
+之後日常維護交給 `snapshot.py`，不需要再跑。
+
+---
+
 ## 新錢包進場的郵件通知
 
 每次抓完資料後，比對 `seen_wallets.json` 名冊，**出現從未見過的錢包就寄信**。
@@ -175,7 +205,11 @@ python3 scripts/snapshot.py
 |---|---|---|
 | `MAIL_USERNAME` | 寄件的 Gmail 地址 | 是 |
 | `MAIL_PASSWORD` | Google **應用程式密碼**（16 碼，不是登入密碼） | 是 |
-| `MAIL_TO` | 收件地址 | 否，預設寄給自己 |
+| `MAIL_TO` | **額外**收件地址，多個用逗號分隔 | 否，不填就只寄給自己 |
+
+`MAIL_TO` 是「加上去」而不是「取代掉」——`MAIL_USERNAME` 那個信箱一定收得到，
+填了 `MAIL_TO` 就是再多寄給那些人。收件地址放 secret 而不是寫死在 workflow 裡，
+是因為這個 repo 是公開的，寫死會被爬蟲撈去發垃圾信。
 
 應用程式密碼在 <https://myaccount.google.com/apppasswords> 產生（需先開兩步驟驗證），
 只能用來寄信，隨時可撤銷。設定方式：

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>2026 地方選舉 · Polymarket 下注監控</title>
   <!-- ⚠️ 改完 app.js / style.css 記得把下面兩個 ?v= 的數字加一，否則瀏覽器會一直用舊的快取版本 -->
-  <link rel="stylesheet" href="style.css?v=16">
+  <link rel="stylesheet" href="style.css?v=17">
 </head>
 <body>
 
@@ -17,10 +17,13 @@
         <span id="sourceBadge" class="badge badge-loading">連線中…</span>
         <span class="dot">•</span>
         <span id="lastUpdate">載入中…</span>
-        <span class="dot">•</span>
-        <span id="totalCount">0</span> 筆成交
-        <span class="dot">•</span>
-        <span class="auto-refresh">每 5 分鐘自動更新</span>
+        <!-- 成交筆數與自動更新只在縣市頁有意義，新進錢包頁會把這一段整個收起來 -->
+        <span id="metaTail">
+          <span class="dot">•</span>
+          <span id="totalCount">0</span> 筆成交
+          <span class="dot">•</span>
+          <span class="auto-refresh">每 5 分鐘自動更新</span>
+        </span>
       </div>
     </div>
     <div class="header-right">
@@ -171,6 +174,43 @@
 </main>
 </div><!-- /cityView -->
 
+<!-- 新進錢包通知：跨縣市彙整，每個錢包只列它「第一次」下注的那一筆 -->
+<section class="container nw-view" id="newWalletsView" style="display:none;">
+  <div class="nw-head">
+    <h2 class="nw-title">🔔 新進錢包通知</h2>
+    <p class="nw-sub">
+      每個錢包<b>第一次</b>在該縣市下注的那一筆交易。系統偵測到新錢包時會同步寄出通知信，
+      這一頁是可以回頭查的完整紀錄，跨縣市彙整、依時間由新到舊排列。
+    </p>
+  </div>
+
+  <div class="nw-filters">
+    <div class="search-pill">
+      <span class="search-icon">🔍</span>
+      <input id="nwSearch" type="text" placeholder="搜尋交易者名稱 / 錢包地址">
+      <button id="nwSearchClear" type="button" title="清除搜尋" style="display:none;" aria-label="清除">✕</button>
+    </div>
+
+    <select id="nwCity" class="nw-select" aria-label="縣市"></select>
+
+    <div class="nw-dates">
+      <input id="nwStart" type="date" aria-label="起始日期">
+      <span class="amount-sep">—</span>
+      <input id="nwEnd" type="date" aria-label="結束日期">
+    </div>
+
+    <label class="nw-check" title="同一個錢包在兩個以上的縣市下過注，通常是最值得注意的訊號">
+      <input type="checkbox" id="nwCrossOnly"><span>只看跨縣市錢包</span>
+    </label>
+
+    <div class="spacer"></div>
+    <button class="ghost-btn" type="button" id="nwReset">重設</button>
+    <button class="ghost-btn" type="button" id="nwCsv" title="下載目前篩選結果為 CSV">⬇ CSV</button>
+  </div>
+
+  <div id="nwBody"><div class="loading">載入新進錢包名單中…</div></div>
+</section>
+
 <footer class="container">
   <p>
     資料來源：Polymarket Gamma API（盤口賠率）＋ Data API（成交明細）　｜　時間為台北時間 UTC+8
@@ -182,6 +222,6 @@
 </footer>
 
 <script src="map-data.js?v=3"></script>
-<script src="app.js?v=16"></script>
+<script src="app.js?v=17"></script>
 </body>
 </html>

@@ -55,6 +55,11 @@ PROFILE_WORKERS = 8        # 平行連線數，別調太高以免被限流
 PROFILE_REFRESH = 300
 PROFILE_STALE_H = 24       # 超過幾小時才需要刷新
 
+# 新進錢包名單，供網頁的「新進錢包通知」頁籤讀取，會 commit 進 repo。
+# 跟 SEEN_WALLETS_PATH 的差別：名冊只記「看過沒」，這裡記完整的首筆交易明細，
+# 是給人看的。採合併寫入而非覆蓋，理由見 merge_new_wallets()。
+NEW_WALLETS_PATH = os.path.join(ROOT, "new-wallets.json")
+
 # 通知信的暫存檔（不 commit）。有新錢包時才產生，workflow 靠它判斷要不要寄信。
 NOTIFY_HTML_PATH = os.path.join(ROOT, "new_wallets.html")
 NOTIFY_SUBJECT_PATH = os.path.join(ROOT, "new_wallets_subject.txt")
@@ -279,6 +284,7 @@ def _wallet_entry(cfg: dict, t: dict, cond_to_cand: dict) -> dict:
     size = float(t.get("size") or 0)
     price = float(t.get("price") or 0)
     return {
+        "event_id": cfg["id"],
         "city": cfg["city"],
         "slug": cfg["slug"],
         "wallet": (t.get("proxyWallet") or "").lower(),
@@ -306,13 +312,18 @@ def first_trade_per_wallet(trades: list) -> dict:
 
 
 def detect_new_wallets(cfg: dict, trades: list, cond_to_cand: dict,
-                       roster: dict, bootstrap: bool) -> list:
+                       roster: dict, bootstrap: bool) -> tuple:
     """
     比對名冊，找出這個縣市這次才第一次出現的錢包，並就地更新 roster。
 
-    bootstrap（名冊不存在或損毀）時把現有錢包全部登記為已知但不回報，
+    回傳 (要寄信的, 要存進 new-wallets.json 的)。兩者的差別在於：
+
+    bootstrap（名冊不存在或損毀）時把現有錢包全部登記為已知但「不寄信」，
     否則第一次啟用就會一口氣寄出所有歷史錢包，變成騷擾。
-    同理，新加入的縣市第一次抓取時也不會回報。
+    同理，新加入的縣市第一次抓取時也不寄信。
+
+    但這些不寄信的錢包仍然要存檔——網頁上的名單該是完整的，
+    「要不要吵你」跟「要不要記錄」是兩回事。
     """
     key = str(cfg["id"])
     known = roster.setdefault(key, {})
@@ -320,16 +331,58 @@ def detect_new_wallets(cfg: dict, trades: list, cond_to_cand: dict,
     silent = bootstrap or is_new_city
 
     new_wallets = []
+    recorded = []
     for wallet, t in first_trade_per_wallet(trades).items():
         if wallet in known:
             continue
         entry = _wallet_entry(cfg, t, cond_to_cand)
         known[wallet] = {"first_seen": entry["first_seen"], "name": entry["name"]}
+        recorded.append(entry)
         if not silent:
             new_wallets.append(entry)
 
-    new_wallets.sort(key=lambda x: x.get("first_timestamp") or 0)
-    return new_wallets
+    by_time = lambda x: x.get("first_timestamp") or 0
+    new_wallets.sort(key=by_time)
+    recorded.sort(key=by_time)
+    return new_wallets, recorded
+
+
+def merge_new_wallets(records: list) -> int:
+    """
+    把這輪新發現的錢包併進 new-wallets.json，回傳合併後的總筆數。
+
+    ⚠️ 一定要「合併」而不是每輪重新產生。首筆交易明細是從 data-*.json 撈的，
+    而那些檔有 MAX_OFFSET 上限；等成交筆數成長到截斷，早期錢包的首筆交易
+    就會從 data-*.json 消失。若每輪重建，這份名單會跟著愈縮愈短。
+    合併寫入則是記過就不會掉。
+    """
+    existing = {}
+    if os.path.exists(NEW_WALLETS_PATH):
+        try:
+            with open(NEW_WALLETS_PATH, encoding="utf-8") as f:
+                for w in json.load(f).get("wallets", []):
+                    existing[f"{w.get('event_id')}:{w.get('wallet')}"] = w
+        except Exception as e:
+            print(f"  ⚠️ 新進錢包名單讀取失敗（{e}），這次重新建立")
+            existing = {}
+
+    added = 0
+    for w in records:
+        k = f"{w.get('event_id')}:{w.get('wallet')}"
+        if k not in existing:
+            existing[k] = w
+            added += 1
+
+    wallets = sorted(existing.values(),
+                     key=lambda x: x.get("first_timestamp") or 0, reverse=True)
+    write_json_atomic(NEW_WALLETS_PATH, {
+        "updated_at": datetime.now(TZ8).isoformat(timespec="seconds"),
+        "count": len(wallets),
+        "wallets": wallets,
+    })
+    if added:
+        print(f"  [新進名單] 新增 {added} 筆，累計 {len(wallets)} 筆")
+    return len(wallets)
 
 
 def save_roster(roster: dict):
@@ -655,6 +708,7 @@ def main(test_email: bool = False) -> int:
         print("  [名冊] 不存在或損毀，本次建立基準線，不寄信")
 
     by_city = {}
+    recorded_all = []          # 這輪所有新錢包（含不寄信的），要併進 new-wallets.json
     daily = {}
     failures = []
     all_wallets = set()
@@ -688,9 +742,10 @@ def main(test_email: bool = False) -> int:
         }
         write_json_atomic(data_path(cfg["id"]), payload)
 
-        new_wallets = detect_new_wallets(cfg, trades, cond_to_cand, roster, bootstrap)
+        new_wallets, recorded = detect_new_wallets(cfg, trades, cond_to_cand, roster, bootstrap)
         if new_wallets:
             by_city[cfg["city"]] = new_wallets
+        recorded_all.extend(recorded)
 
         wallets = {(t.get("proxyWallet") or "").lower() for t in trades if t.get("proxyWallet")}
         all_wallets |= wallets
@@ -720,6 +775,7 @@ def main(test_email: bool = False) -> int:
         return 1
 
     save_roster(roster)
+    merge_new_wallets(recorded_all)
     cross = cross_city_map(roster)
     update_profiles(all_wallets, cross)
     write_json_atomic(os.path.join(SNAPSHOT_DIR, f"{now:%Y-%m-%d}.json"), {

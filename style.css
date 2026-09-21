@@ -539,3 +539,68 @@ footer p { margin: 0 0 6px; font-size: 12px; color: var(--text-faint); line-heig
   stroke-width: 1; stroke-dasharray: 5 4;
 }
 .inset-note text { font-size: 15px; fill: var(--text-faint); }
+
+/* ── 新進錢包通知頁 ──────────────────────────────────────────
+   跨縣市彙整，不屬於任何一個縣市，所以自成一個 view。
+   表格、分頁、chip 都沿用縣市頁既有的類別，只補這頁特有的部分。 */
+.city-tab.tab-nw { font-weight: 650; }
+.city-tab.tab-nw.active { color: var(--warn); box-shadow: inset 0 -2px 0 var(--warn); }
+
+.nw-view { padding-top: 16px; }
+.nw-head { margin-bottom: 14px; }
+.nw-title { margin: 0 0 4px; font-size: 16px; font-weight: 650; }
+.nw-sub { margin: 0; font-size: 12.5px; color: var(--text-dim); line-height: 1.75; max-width: 780px; }
+.nw-sub b { color: var(--text); }
+
+.nw-filters {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-bottom: 14px;
+}
+.nw-filters .search-pill { width: auto; flex: 1 1 260px; min-width: 200px; }
+#nwSearchClear {
+  background: none; border: none; color: var(--text-dim);
+  cursor: pointer; font-size: 13px; padding: 0 2px;
+}
+#nwSearchClear:hover { color: var(--text); }
+
+.nw-select {
+  background: var(--bg-card); border: 1px solid var(--border); color: var(--text);
+  border-radius: 999px; padding: 6px 12px; font-size: 13px; font-family: inherit;
+  cursor: pointer; outline: none;
+}
+.nw-select:focus { border-color: var(--accent); }
+
+.nw-dates { display: flex; align-items: center; gap: 8px; }
+.nw-dates input {
+  background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  border-radius: 7px; padding: 6px 9px; font-size: 13px; font-family: inherit; outline: none;
+}
+.nw-dates input:focus { border-color: var(--accent); }
+
+.nw-check {
+  display: flex; align-items: center; gap: 6px; cursor: pointer;
+  font-size: 13px; color: var(--text-dim);
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 999px; padding: 6px 13px;
+}
+.nw-check:hover { color: var(--text); background: var(--bg-hover); }
+.nw-check input { accent-color: var(--warn); cursor: pointer; }
+.nw-check:has(input:checked) { border-color: var(--warn); color: var(--warn); }
+
+/* 摘要數字：這頁真正要回答的三個問題 */
+.nw-summary {
+  display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px;
+}
+.nw-stat {
+  display: flex; flex-direction: column; gap: 2px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 10px 16px; min-width: 132px;
+}
+.nw-stat-n { font-size: 19px; font-weight: 680; font-variant-numeric: tabular-nums; }
+.nw-stat-l { font-size: 11.5px; color: var(--text-dim); }
+
+@media (max-width: 720px) {
+  .nw-filters .search-pill { flex-basis: 100%; }
+  .nw-dates { flex: 1 1 100%; }
+  .nw-dates input { flex: 1; }
+  .nw-stat { flex: 1 1 calc(50% - 10px); min-width: 0; }
+}
