@@ -431,6 +431,9 @@ tbody tr.is-new { animation: flash 2.4s ease-out; }
 .trader { display: flex; align-items: center; gap: 7px; }
 .trader-name { font-weight: 550; }
 .trader-anon { color: var(--text-faint); font-style: italic; }
+/* 未具名的錢包一樣連得到 Polymarket 個人頁（那個網址吃的是地址，不是暱稱），
+   所以保留灰斜體的「沒暱稱」語氣，但滑過去要看得出來可以點 */
+a.trader-anon:hover { color: var(--accent); text-decoration: underline; }
 
 a.link { color: var(--accent); text-decoration: none; }
 a.link:hover { text-decoration: underline; }

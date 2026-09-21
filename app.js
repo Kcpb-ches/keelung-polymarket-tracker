@@ -12,7 +12,7 @@
 
 // 版號跟 index.html 的 ?v= 對應。若 console 印出的版號跟你剛改的不一樣，
 // 代表瀏覽器讀的是快取的舊檔，按 Cmd+Shift+R 強制重新載入。
-const APP_VERSION = 17;
+const APP_VERSION = 18;
 console.log(`[選舉賭盤監控] app.js v${APP_VERSION}`);
 
 // ── 設定 ────────────────────────────────────────────────────
@@ -938,9 +938,10 @@ function renderTable(rows) {
             <td class="num">${fmt(t.size)}</td>
             <td class="num">${fmt(t.price, 3)}</td>
             <td class="num"><b>$${fmt(t.total)}</b></td>
-            <td>${t.isAnon
-                  ? '<span class="trader-anon">未具名</span>'
-                  : `<a class="link" href="${polymarketProfile(t.wallet)}" target="_blank" rel="noopener">${escapeHtml(t.name)}</a>`}</td>
+            <td><a class="link ${t.isAnon ? 'trader-anon' : ''}" href="${polymarketProfile(t.wallet)}"
+                   target="_blank" rel="noopener"
+                   title="${t.isAnon ? '這個錢包沒有設暱稱，但一樣可以看它的 Polymarket 個人頁' : ''}"
+                >${t.isAnon ? '未具名' : escapeHtml(t.name)}</a></td>
             <td class="mono">
               <a class="link" href="${polygonscanAddr(t.wallet)}" target="_blank" rel="noopener" title="${t.wallet}">${shortAddr(t.wallet)}</a>
               ${copyBtn(t.wallet, '複製錢包')}
@@ -967,9 +968,10 @@ function renderFeed(rows) {
           <span class="tag-${t.side === 'BUY' ? 'buy' : 'sell'}">${t.side === 'BUY' ? '▲ 買進' : '▼ 賣出'}</span>
           <span class="cand-chip ${t.party}">${escapeHtml(t.cand)}</span>
           <span class="tag-${t.outcome === 'Yes' ? 'yes' : 'no'}">${t.outcome === 'Yes' ? 'Yes 會當選' : 'No 不會當選'}</span>
-          ${t.isAnon
-            ? '<span class="trader-anon">未具名交易者</span>'
-            : `<a class="link trader-name" href="${polymarketProfile(t.wallet)}" target="_blank" rel="noopener">${escapeHtml(t.name)}</a>`}
+          <a class="link trader-name ${t.isAnon ? 'trader-anon' : ''}" href="${polymarketProfile(t.wallet)}"
+             target="_blank" rel="noopener"
+             title="${t.isAnon ? '這個錢包沒有設暱稱，但一樣可以看它的 Polymarket 個人頁' : ''}"
+            >${t.isAnon ? '未具名交易者' : escapeHtml(t.name)}</a>
         </div>
         <div class="feed-line2">
           <span class="mono">${tpeTime(t.ts)}</span>
@@ -1517,9 +1519,10 @@ function nwRender() {
               <a class="link" href="#${r.slug}" title="前往 ${escapeHtml(r.city)}監控頁">${escapeHtml(r.city)}</a>
               ${others.length ? `<span class="wallet-badge badge-cross" title="這個錢包也出現在：${escapeHtml(others.join('、'))}">跨 ${others.length + 1} 縣市</span>` : ''}
             </td>
-            <td>${r.isAnon
-                  ? '<span class="trader-anon">未具名</span>'
-                  : `<a class="link" href="${polymarketProfile(r.wallet)}" target="_blank" rel="noopener">${escapeHtml(r.name)}</a>`}</td>
+            <td><a class="link ${r.isAnon ? 'trader-anon' : ''}" href="${polymarketProfile(r.wallet)}"
+                   target="_blank" rel="noopener"
+                   title="${r.isAnon ? '這個錢包沒有設暱稱，但一樣可以看它的 Polymarket 個人頁' : ''}"
+                >${r.isAnon ? '未具名' : escapeHtml(r.name)}</a></td>
             <td><span class="cand-chip ${r.party}">${escapeHtml(r.cand)}</span></td>
             <td><span class="tag-${r.outcome === 'Yes' ? 'yes' : 'no'}">${r.outcome}</span></td>
             <td><span class="tag-${r.side === 'BUY' ? 'buy' : 'sell'}">${r.side === 'BUY' ? '▲ BUY' : '▼ SELL'}</span></td>
