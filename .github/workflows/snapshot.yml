@@ -81,7 +81,9 @@ jobs:
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
           from: 基隆盤監控 <${{ secrets.MAIL_USERNAME }}>
-          to: ${{ secrets.MAIL_TO || secrets.MAIL_USERNAME }}
+          # 收件人：寄件帳號自己一定收得到；MAIL_TO 是「額外收件人」，多個用逗號分隔。
+          # 收件信箱不寫死在這裡，是因為這個 repo 是公開的，寫死會被爬蟲撈走。
+          to: ${{ secrets.MAIL_TO && format('{0},{1}', secrets.MAIL_USERNAME, secrets.MAIL_TO) || secrets.MAIL_USERNAME }}
           subject: ${{ steps.notify.outputs.subject }}
           html_body: file://new_wallets.html
           convert_markdown: false
