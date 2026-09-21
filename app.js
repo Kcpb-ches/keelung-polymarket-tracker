@@ -12,7 +12,7 @@
 
 // 版號跟 index.html 的 ?v= 對應。若 console 印出的版號跟你剛改的不一樣，
 // 代表瀏覽器讀的是快取的舊檔，按 Cmd+Shift+R 強制重新載入。
-const APP_VERSION = 18;
+const APP_VERSION = 19;
 console.log(`[選舉賭盤監控] app.js v${APP_VERSION}`);
 
 // ── 設定 ────────────────────────────────────────────────────
@@ -1391,7 +1391,7 @@ async function loadNewWallets(manual = false) {
       console.error('[新進錢包名單讀取失敗]', e.message);
       $('nwBody').innerHTML = `<div class="empty">
         讀不到 new-wallets.json（${escapeHtml(e.message)}）。<br>
-        這份名單由 GitHub Actions 每 3 小時產生一次，若是剛部署完請稍等一輪再試。
+        這份名單由 GitHub Actions 每小時產生一次，若是剛部署完請稍等一輪再試。
       </div>`;
       $('lastUpdate').textContent = '名單讀取失敗';
       setTimeout(() => btn.classList.remove('spinning'), 300);

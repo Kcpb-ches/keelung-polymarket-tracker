@@ -50,8 +50,9 @@ SEEN_WALLETS_PATH = os.path.join(ROOT, "seen_wallets.json")
 PROFILES_PATH = os.path.join(ROOT, "wallet-profiles.json")
 PROFILE_WORKERS = 8        # 平行連線數，別調太高以免被限流
 # 每輪最多刷新幾個既有錢包的預測次數。
-# 要讓所有錢包都能在 PROFILE_STALE_H 內輪到一次：錢包數 ÷ 這個值 × 3 小時 < 24 小時。
-# 19 個縣市約 600～700 個錢包，設 300 可在 6～9 小時內跑完一輪。
+# 要讓所有錢包都能在 PROFILE_STALE_H 內輪到一次：
+#   錢包數 ÷ 這個值 × 排程間隔（現為 1 小時）< 24 小時。
+# 19 個縣市約 1,450 個錢包，設 300 約 5 小時跑完一輪，餘裕充足。
 PROFILE_REFRESH = 300
 PROFILE_STALE_H = 24       # 超過幾小時才需要刷新
 

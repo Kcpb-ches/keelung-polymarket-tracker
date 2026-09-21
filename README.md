@@ -101,7 +101,7 @@ keelung_polymarket/
 ├── snapshots/
 │   └── YYYY-MM-DD.json            每天一份賠率與統計存檔（不含逐筆明細）
 │
-└── .github/workflows/snapshot.yml GitHub Actions 排程（每 3 小時）＋ 寄信
+└── .github/workflows/snapshot.yml GitHub Actions 排程（每小時）＋ 寄信
 ```
 
 ---
@@ -131,7 +131,7 @@ python3 scripts/snapshot.py
 ### 上線給別人看
 
 1. 把這個資料夾推到 GitHub，Settings → Pages 選擇從 main 分支的根目錄發布
-2. Actions 會自動照 `.github/workflows/snapshot.yml` 每 3 小時抓一次快照並 commit
+2. Actions 會自動照 `.github/workflows/snapshot.yml` 每小時抓一次快照並 commit
 3. 沒有 VPN 的人打開網站會走快照模式，你自己開 VPN 打開就是即時模式
 
 ---
@@ -343,13 +343,21 @@ Polymarket 的 zh-hant 介面是**機器翻譯，而且有錯**：
 | 什麼 | 多久一次 | 改哪裡 |
 |---|---|---|
 | 網頁自動重抓 | 5 分鐘 | `app.js` 的 `REFRESH_INTERVAL` |
-| Actions 抓快照＋檢查新錢包 | 3 小時 | `.github/workflows/snapshot.yml` 的 `cron` |
+| Actions 抓快照＋檢查新錢包 | 1 小時 | `.github/workflows/snapshot.yml` 的 `cron` |
 
-也就是說**新錢包通知最慢會延遲 3 小時**。選前想更即時就把 cron 調密一點。
+也就是說**新錢包通知最慢會延遲約 1 小時**。
 
-這些盤成交稀疏（十個縣市加起來約 1,600 筆），抓太密只是重複拿同一份資料，
-還會讓 repo 累積大量內容相同、只有時間戳不同的 commit。
-想看當下最新，隨時可以按網頁右上角的 **↻** 手動更新。
+原本設 3 小時，2026-09-21 改成 1 小時。原因不是覺得 3 小時不夠密，而是
+**GitHub 的排程本來就會誤點、甚至整班丟掉**——那天 11:30 那班誤點到 13:13，
+接著 14:30 那班完全沒跑，資料一路停到 17:30，中間空了四個多小時。
+間隔愈短，被丟掉一班的傷害就愈小。
+
+代價是 commit 數變三倍，但 git 對這種「大部分內容相同、只有時間戳不同」的檔案
+壓縮得很好——159 個 commit 累積下來，`.git` 目前也才 11 MB。
+
+想看當下最新不必等排程：到 Actions → snapshot → **Run workflow** 手動觸發一次，
+約一分半後網頁就是新的（按右上角 **↻** 重載）。終端機也可以直接下
+`gh workflow run snapshot.yml`。
 
 ---
 
