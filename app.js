@@ -12,7 +12,7 @@
 
 // 版號跟 index.html 的 ?v= 對應。若 console 印出的版號跟你剛改的不一樣，
 // 代表瀏覽器讀的是快取的舊檔，按 Cmd+Shift+R 強制重新載入。
-const APP_VERSION = 19;
+const APP_VERSION = 20;
 console.log(`[選舉賭盤監控] app.js v${APP_VERSION}`);
 
 // ── 設定 ────────────────────────────────────────────────────
@@ -226,6 +226,10 @@ let walletProfiles = null;
 let firstLoad   = true;
 
 let viewMode = 'table';        // 'table' | 'feed' | 'wallet'
+// 錢包視圖的排序。跟表格視圖的 sortCol/sortDir 分開，因為排序的對象不同：
+// 那邊排的是「每一筆成交」，這邊排的是「彙總後的每個錢包」。
+let walletSort    = 'turnover';
+let walletSortDir = 'desc';
 let filters  = { cands: [], sides: [], outcomes: [], minUsd: null, maxUsd: null, dateStart: '', dateEnd: '', search: '' };
 let sortCol  = 'ts';
 let sortDir  = 'desc';
@@ -993,6 +997,44 @@ function renderFeed(rows) {
 }
 
 // ── 錢包彙總視圖 ────────────────────────────────────────────
+
+/**
+ * 錢包視圖的排序選項。
+ *
+ * defaultDir 是「第一次點這個選項時要用哪個方向」——
+ * 金額、筆數這種看大小的預設由大到小；時間類的預設由早到晚，
+ * 因為看時間通常是在找「誰最早卡位」，早期進場的人可能有資訊優勢
+ * （這也是卡片上「開盤 N 小時內進場」標記想突顯的事）。
+ */
+const WALLET_SORTS = {
+  turnover: { label: '累計金額', val: (w) => w.turnover, defaultDir: 'desc',
+              words: { desc: '由大到小', asc: '由小到大' },
+              hint: '買進加賣出的總金額' },
+  first:    { label: '首次進場', val: (w) => w.firstTs,  defaultDir: 'asc',
+              words: { desc: '由晚到早', asc: '由早到晚' },
+              hint: '這個錢包在本盤的第一筆成交時間' },
+  last:     { label: '最後動作', val: (w) => w.lastTs,   defaultDir: 'desc',
+              words: { desc: '由晚到早', asc: '由早到晚' },
+              hint: '這個錢包在本盤最近一次成交的時間' },
+  net:      { label: '淨投入',   val: (w) => w.netUsd,   defaultDir: 'desc',
+              words: { desc: '由大到小', asc: '由小到大' },
+              hint: '買進金額減掉賣出金額' },
+  count:    { label: '成交筆數', val: (w) => w.count,    defaultDir: 'desc',
+              words: { desc: '由多到少', asc: '由少到多' },
+              hint: '這個錢包在本盤的成交筆數' },
+};
+
+function setWalletSort(key) {
+  if (!WALLET_SORTS[key]) return;
+  if (walletSort === key) {
+    walletSortDir = walletSortDir === 'asc' ? 'desc' : 'asc';   // 同一個再點一次就反向
+  } else {
+    walletSort = key;
+    walletSortDir = WALLET_SORTS[key].defaultDir;
+  }
+  render();
+}
+
 function renderWallets(rows) {
   const openMs = eventMeta && eventMeta.startMs;
   const earlyCutoff = openMs ? openMs + EARLY_WINDOW_H * 3600 * 1000 : null;
@@ -1011,9 +1053,11 @@ function renderWallets(rows) {
     if (!w.name && t.name) { w.name = t.name; w.isAnon = false; }
   });
 
+  const dir = walletSortDir === 'asc' ? 1 : -1;
+  const spec = WALLET_SORTS[walletSort] || WALLET_SORTS.turnover;
   const list = Object.values(map)
     .map((w) => ({ ...w, netUsd: w.buyUsd - w.sellUsd, turnover: w.buyUsd + w.sellUsd }))
-    .sort((a, b) => b.turnover - a.turnover);
+    .sort((a, b) => (spec.val(a) - spec.val(b)) * dir);
 
   if (!list.length) {
     $('feed').innerHTML = '<div class="empty">沒有符合條件的錢包</div>';
@@ -1080,11 +1124,28 @@ function renderWallets(rows) {
     </div>`;
   }).join('');
 
-  $('feed').innerHTML =
+  const arrow = walletSortDir === 'asc' ? '↑' : '↓';
+  const sortBar = `
+    <div class="wallet-sort">
+      <span class="wallet-sort-label">排序依據</span>
+      <div class="view-switch" role="group" aria-label="錢包排序">
+        ${Object.entries(WALLET_SORTS).map(([k, v]) => `
+          <button class="view-btn ${k === walletSort ? 'active' : ''}" type="button"
+                  data-wsort="${k}" title="${escapeHtml(v.hint)}（再點一次可反向）">
+            ${v.label}${k === walletSort ? ` ${arrow}` : ''}
+          </button>`).join('')}
+      </div>
+    </div>`;
+
+  $('feed').innerHTML = sortBar +
     `<div class="wallet-list">${html}</div>` +
     `<div class="page-info" style="text-align:center;margin-top:14px">
-       共 ${fmtInt(list.length)} 個錢包，依累計成交金額（買+賣）排序
+       共 ${fmtInt(list.length)} 個錢包，依${spec.label}${spec.words[walletSortDir]}排序
      </div>`;
+
+  $('feed').querySelectorAll('[data-wsort]').forEach((b) => {
+    b.addEventListener('click', () => setWalletSort(b.dataset.wsort));
+  });
   bindRowEvents();
 }
 
