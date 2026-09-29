@@ -95,6 +95,8 @@ keelung_polymarket/
 │   ├── snapshot.py                抓取腳本（純標準庫，不用 pip install）
 │   └── backfill_new_wallets.py    一次性：回填 new-wallets.json 的歷史資料
 │
+├── cron-worker/                   Cloudflare Worker：每小時觸發 Actions（見該資料夾 README）
+│
 ├── seen_wallets.json              ← 已知錢包名冊，新錢包偵測的依據
 ├── new-wallets.json               ← 新進錢包完整明細，「新進錢包通知」頁籤讀這個
 │
@@ -363,7 +365,15 @@ Polymarket 的 zh-hant 介面是**機器翻譯，而且有錯**：
 還是維持每小時而不調回 3 小時，是因為反正配額一樣，
 提出的請求多一點、被分配到的機會也多一點，沒有壞處。
 
-**所以：不要把「新錢包通知」當成即時警報，它平均會延遲四個小時左右。**
+### 解法：外部排程去按「Run workflow」
+
+節流只限制**排程**，不限制**手動觸發**——按 Run workflow 都是秒級啟動。
+所以真正的解法是讓 GitHub 以外的服務定時呼叫 `workflow_dispatch` API。
+
+`cron-worker/` 就是這件事：一支 Cloudflare Worker，每小時整點打一次那支 API。
+設定方式見 [cron-worker/README.md](cron-worker/README.md)。
+
+`snapshot.yml` 裡的排程保留不動，當作 Worker 掛掉時的備援，兩邊錯開半小時。
 
 想看當下最新不必等排程：到 Actions → snapshot → **Run workflow** 手動觸發一次，
 約一分半後網頁就是新的（按右上角 **↻** 重載）。終端機也可以直接下

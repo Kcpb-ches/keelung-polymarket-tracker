@@ -1,0 +1,11 @@
+name = "keelung-polymarket-cron"
+main = "src/index.js"
+compatibility_date = "2026-09-29"
+
+# 每小時的整點（UTC）觸發。
+#
+# 刻意跟 snapshot.yml 裡的 GitHub 排程（每小時 :30）錯開半小時：
+# GitHub 那邊保留不動，當作這支 Worker 萬一掛掉時的備援。
+# 兩邊都跑到的那個小時會抓兩次，但每次只花 30 秒，沒有壞處。
+[triggers]
+crons = ["0 * * * *"]
