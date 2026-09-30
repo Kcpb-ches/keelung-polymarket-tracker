@@ -9,10 +9,13 @@ compatibility_date = "2026-09-29"
 workers_dev = false
 preview_urls = false
 
-# 每小時的整點（UTC）觸發。
+# 每 5 分鐘觸發一次。
 #
-# 刻意跟 snapshot.yml 裡的 GitHub 排程（每小時 :30）錯開半小時：
-# GitHub 那邊保留不動，當作這支 Worker 萬一掛掉時的備援。
-# 兩邊都跑到的那個小時會抓兩次，但每次只花 30 秒，沒有壞處。
+# snapshot.yml 裡的 GitHub 排程（每小時 :30）保留不動，
+# 當作這支 Worker 萬一掛掉時的備援。
+#
+# ⚠️ 一天會跑 288 次，也就是 288 個 commit——因為 data-*.json 裡的
+#    fetched_at 每輪都會變，workflow 的「有變動才 commit」判斷一定成立。
+#    若覺得 repo 被洗版，要改的是 snapshot.yml 的比對方式，不是這裡。
 [triggers]
-crons = ["0 * * * *"]
+crons = ["*/5 * * * *"]
