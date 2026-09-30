@@ -2,6 +2,13 @@ name = "keelung-polymarket-cron"
 main = "src/index.js"
 compatibility_date = "2026-09-29"
 
+# 關掉所有對外網址。這支 Worker 只接受 Cloudflare 內部的排程事件，
+# 沒有 fetch handler，本來就不該有人能從外面呼叫它——
+# 留著公開網址只是讓別人有機會一直戳、把 Actions 灌爆。
+# 不明講的話 wrangler 預設會幫你開，deploy 時會跳 WARNING 提醒。
+workers_dev = false
+preview_urls = false
+
 # 每小時的整點（UTC）觸發。
 #
 # 刻意跟 snapshot.yml 裡的 GitHub 排程（每小時 :30）錯開半小時：
