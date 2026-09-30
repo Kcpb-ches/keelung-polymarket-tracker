@@ -93,6 +93,7 @@ keelung_polymarket/
 │
 ├── scripts/
 │   ├── snapshot.py                抓取腳本（純標準庫，不用 pip install）
+│   ├── should_commit.py           判斷這一輪值不值得留一個 commit
 │   └── backfill_new_wallets.py    一次性：回填 new-wallets.json 的歷史資料
 │
 ├── cron-worker/                   Cloudflare Worker：每 5 分鐘觸發 Actions（見該資料夾 README）
@@ -374,6 +375,31 @@ Polymarket 的 zh-hant 介面是**機器翻譯，而且有錯**：
 設定方式見 [cron-worker/README.md](cron-worker/README.md)。
 
 `snapshot.yml` 裡的排程保留不動，當作 Worker 掛掉時的備援。
+
+### 每 5 分鐘跑，但不是每 5 分鐘 commit
+
+一天跑 288 次，如果每次都 commit，兩個月就是一萬七千個 commit，`git pull` 會愈來愈慢。
+而這些 commit 絕大多數沒有意義——這個盤一天約 50 筆成交，288 個快照裡大概有 250 個
+除了時間戳之外內容一模一樣。
+
+所以 `scripts/should_commit.py` 會先判斷「這個盤真的有新動作嗎」：
+
+| | 會觸發 commit |
+|---|---|
+| 任何縣市有新成交 | ✅ |
+| 錢包名冊出現新錢包 | ✅ |
+| 新進錢包名單有新項目 | ✅ |
+| 時間戳（`fetched_at`／`updated_at`） | ❌ |
+| 盤口賠率、流動性、總成交量 | ❌ |
+| 錢包的全站預測次數（`traded`） | ❌ |
+
+下面三類為什麼不算：它們會自己一直跳動，跟「有沒有人在這個盤下注」無關——
+賠率會因做市商調單而變，`traded` 會因為那個錢包在 Polymarket 其他市場
+（跟台灣選舉無關）交易而變。讓它們觸發 commit 等於回到每輪都 commit。
+
+代價：沒有新成交的那段時間，快照裡的賠率會停在最後一次 commit 的數字。
+但沒有成交時賠率本來就不太會動，而且網頁連得到 API 時是直接讀即時賠率，
+快照只是備援。
 
 想看當下最新不必等排程：到 Actions → snapshot → **Run workflow** 手動觸發一次，
 約一分半後網頁就是新的（按右上角 **↻** 重載）。終端機也可以直接下

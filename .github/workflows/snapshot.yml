@@ -54,14 +54,19 @@ jobs:
       # 先存檔再寄信：萬一寄信失敗，資料至少已經保住，網站不會因為
       # 郵件設定的問題而拿到過期快照。寄信失敗會讓整個 workflow 標記為失敗，
       # GitHub 會另外寄「執行失敗」通知，所以不會默默漏掉。
-      - name: 有變動才 commit
+      # 只在「這個盤真的有新動作」時才 commit。
+      #
+      # 不能只看 git 有沒有偵測到檔案變動——data-*.json 的 fetched_at 每輪都會變，
+      # 那樣判斷的話每 5 分鐘就一個 commit，一天 288 個，repo 很快就會被洗爛。
+      # should_commit.py 只比對成交明細與錢包名冊，判斷邏輯與理由寫在該檔的開頭。
+      - name: 有實質變動才 commit
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data-*.json snapshots/ seen_wallets.json wallet-profiles.json new-wallets.json
-          if git diff --staged --quiet; then
-            echo "資料沒有變化，跳過 commit"
+          if ! python3 scripts/should_commit.py; then
+            echo "→ 跳過這一輪的 commit"
           else
+            git add data-*.json snapshots/ seen_wallets.json wallet-profiles.json new-wallets.json
             # ⚠️ 這行務必保持單行。在 YAML 的 run: | 區塊裡，任何一行縮排歸零
             #    都會提前結束區塊、讓整個 workflow 檔案無法解析。
             COUNT=$(python3 -c "import json,glob; print(sum(json.load(open(f))['total_trades'] for f in glob.glob('data-*.json')))")
