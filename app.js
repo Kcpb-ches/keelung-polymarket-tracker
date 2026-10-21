@@ -12,7 +12,7 @@
 
 // 版號跟 index.html 的 ?v= 對應。若 console 印出的版號跟你剛改的不一樣，
 // 代表瀏覽器讀的是快取的舊檔，按 Cmd+Shift+R 強制重新載入。
-const APP_VERSION = 20;
+const APP_VERSION = 21;
 console.log(`[選舉賭盤監控] app.js v${APP_VERSION}`);
 
 // ── 設定 ────────────────────────────────────────────────────
@@ -241,6 +241,25 @@ const $  = (id) => document.getElementById(id);
 const fmt = (n, d = 2) => (n ?? 0).toLocaleString('zh-TW', { minimumFractionDigits: d, maximumFractionDigits: d });
 const fmtInt = (n) => (n ?? 0).toLocaleString('zh-TW');
 const shortAddr = (a) => a ? a.slice(0, 6) + '…' + a.slice(-4) : '';
+
+/**
+ * 成交價 → 賠率（含本金的十進位賠率，運彩那種講法）。
+ *
+ * Polymarket 的一股在結算時押對值 $1、押錯值 $0，所以成交價本身就是市場
+ * 認為的機率，賠率就是它的倒數：成交價 0.78 → 1.28 倍，押 100 中了拿回 128。
+ *
+ * 這個數字沒有帶來新資訊，純粹是換個比較直覺的講法。
+ * Yes 與 No 兩種列都能直接套——price 是「該結果代幣自己的價格」，
+ * 同一個候選人的 Yes 價與 No 價相加約等於 1。
+ */
+const oddsOf = (price) => (price > 0 ? 1 / price : null);
+
+/** 賠率的顯示格式。低價位的零碎單會算出上百倍，小數點就沒意義了 */
+function fmtOdds(price) {
+  const o = oddsOf(price);
+  if (o === null) return '—';
+  return o >= 100 ? `${Math.round(o).toLocaleString('zh-TW')} 倍` : `${fmt(o)} 倍`;
+}
 const shortHash = (h) => h ? h.slice(0, 8) + '…' + h.slice(-6) : '';
 
 function escapeHtml(s) {
@@ -458,6 +477,7 @@ function normalizeTrades(raw) {
       outcome: t.outcome,
       size,
       price,
+      odds: oddsOf(price),
       total: size * price,
       name: dispName,
       isAnon: !dispName,
@@ -872,7 +892,7 @@ function applySorting(rows) {
 
 function setSort(col) {
   if (sortCol === col) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-  else { sortCol = col; sortDir = (col === 'ts' || col === 'total' || col === 'size') ? 'desc' : 'asc'; }
+  else { sortCol = col; sortDir = (col === 'ts' || col === 'total' || col === 'size' || col === 'odds') ? 'desc' : 'asc'; }
   currentPage = 1;
   render();
 }
@@ -926,6 +946,7 @@ function renderTable(rows) {
         ${th('side', '買賣')}
         ${th('size', '股數', 'num')}
         ${th('price', '成交價', 'num')}
+        ${th('odds', '賠率', 'num')}
         ${th('total', '金額 USD', 'num')}
         ${th('name', '交易者')}
         <th>錢包地址</th>
@@ -941,6 +962,7 @@ function renderTable(rows) {
             <td><span class="tag-${t.side === 'BUY' ? 'buy' : 'sell'}">${t.side === 'BUY' ? '▲ BUY' : '▼ SELL'}</span></td>
             <td class="num">${fmt(t.size)}</td>
             <td class="num">${fmt(t.price, 3)}</td>
+            <td class="num odds-cell" title="成交價 ${fmt(t.price, 3)} 的倒數：押 100 元中了連本帶利拿回 ${fmt(100 * (t.odds || 0), 0)} 元">${fmtOdds(t.price)}</td>
             <td class="num"><b>$${fmt(t.total)}</b></td>
             <td><a class="link ${t.isAnon ? 'trader-anon' : ''}" href="${polymarketProfile(t.wallet)}"
                    target="_blank" rel="noopener"
@@ -992,6 +1014,7 @@ function renderFeed(rows) {
       <div class="feed-amount">
         <div class="big">$${fmt(t.total)}</div>
         <div class="sub">${fmt(t.size)} 股 @ ${fmt(t.price, 3)}</div>
+        <div class="sub odds-sub" title="成交價 ${fmt(t.price, 3)} 的倒數：押 100 元中了連本帶利拿回 ${fmt(100 * (t.odds || 0), 0)} 元">賠率 ${fmtOdds(t.price)}</div>
       </div>
     </div>`).join('')}</div>`;
 }
@@ -1249,13 +1272,13 @@ function downloadCsv() {
   if (!rows.length) { alert('目前沒有可匯出的資料'); return; }
 
   // 加上縣市欄，多份 CSV 併在一起時才分得出來源
-  const head = ['縣市', '時間(台北)', '候選人', '候選人(英文)', '押注', '買賣', '股數', '成交價', '金額USD',
+  const head = ['縣市', '時間(台北)', '候選人', '候選人(英文)', '押注', '買賣', '股數', '成交價', '賠率', '金額USD',
                 '交易者', '錢包地址', '交易Hash', 'conditionId'];
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = [head.map(esc).join(',')];
   rows.forEach((t) => lines.push([
     activeEvent.city, tpeTime(t.ts), t.cand, t.candEn, t.outcome, t.side,
-    t.size, t.price, t.total.toFixed(4),
+    t.size, t.price, t.odds ? t.odds.toFixed(4) : '', t.total.toFixed(4),
     t.isAnon ? '未具名' : t.name, t.wallet, t.hash, t.conditionId,
   ].map(esc).join(',')));
 

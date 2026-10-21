@@ -617,3 +617,7 @@ footer p { margin: 0 0 6px; font-size: 12px; color: var(--text-faint); line-heig
 @media (max-width: 720px) {
   .wallet-sort .view-switch { flex-wrap: wrap; border-radius: var(--radius); }
 }
+
+/* 賠率：成交價的倒數，壓低視覺重量免得跟金額搶注意力 */
+.odds-cell { color: var(--text-dim); }
+.feed-amount .odds-sub { color: var(--text-faint); }
