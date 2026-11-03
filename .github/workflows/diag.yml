@@ -1,4 +1,4 @@
-# 一次性診斷用。只能手動觸發，不含任何 secret。查完就刪。
+# 一次性診斷用。只能手動觸發，不含任何 secret，不寫檔也不寄信。查完就刪。
 name: diag-polymarket
 
 on:
@@ -8,40 +8,9 @@ jobs:
   diag:
     runs-on: ubuntu-latest
     steps:
-      - name: 第三輪 - 分頁、user-stats、public-profile
-        run: |
-          W=0xd5be8990ef2512164f4aad2297e9b378bc1618e1
-          E=848410
-
-          SUM='import json;d=json.load(open("/tmp/b.txt"));r=d.get("data") or [];print("筆數:",len(r));print("pagination:",json.dumps(d.get("pagination"),ensure_ascii=False)[:300]);print("欄位:",sorted(r[0].keys())) if r else None'
-          RAW='import json;print(json.dumps(json.load(open("/tmp/b.txt")),ensure_ascii=False)[:700])'
-
-          probe () {
-            echo "=============================================================="
-            echo "> $1"
-            code=$(curl -sS -o /tmp/b.txt -w '%{http_code}' -H 'Accept: application/json' --max-time 30 "$1")
-            echo "HTTP $code"
-            python3 -c "$2" || head -c 300 /tmp/b.txt
-            echo
-          }
-
-          probe "https://data-api.polymarket.com/v2/trades?event_id=${E}&limit=500" "$SUM"
-          probe "https://data-api.polymarket.com/v2/trades?event_id=${E}&limit=1000" "$SUM"
-          probe "https://data-api.polymarket.com/v2/trades?event_id=${E}&limit=5000" "$SUM"
-          probe "https://data-api.polymarket.com/v2/trades?event_id=${E}&taker_only=true&limit=500" "$SUM"
-          probe "https://data-api.polymarket.com/v2/trades?event_id=${E}&taker_only=false&limit=500" "$SUM"
-          probe "https://data-api.polymarket.com/v2/user-stats?user=${W}" "$RAW"
-          probe "https://gamma-api.polymarket.com/public-profile?address=${W}" "$RAW"
-
-      - name: 第三輪 - 翻頁兩次確認 cursor 可用
-        run: |
-          B="https://data-api.polymarket.com/v2/trades?event_id=848410&limit=500"
-          curl -sS -H 'Accept: application/json' --max-time 30 "$B" -o /tmp/p1.json
-          C=$(python3 -c 'import json;print((json.load(open("/tmp/p1.json")).get("pagination") or {}).get("next_cursor") or "")')
-          echo "第 1 頁 next_cursor = ${C:0:80}"
-          if [ -n "$C" ]; then
-            curl -sS -H 'Accept: application/json' --max-time 30 "${B}&cursor=${C}" -o /tmp/p2.json
-            python3 -c 'import json;a=json.load(open("/tmp/p1.json"));b=json.load(open("/tmp/p2.json"));ra=a.get("data") or [];rb=b.get("data") or [];k=lambda r:r["transaction_hash"]+str(r["timestamp"]);print("第1頁",len(ra),"筆　第2頁",len(rb),"筆");print("兩頁重疊:",len(set(map(k,ra))&set(map(k,rb))),"（0 代表分頁乾淨）");print("第2頁還有 next_cursor:",bool((b.get("pagination") or {}).get("next_cursor")))'
-          else
-            echo "沒有 next_cursor，一頁就抓完"
-          fi
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: 驗證 Data API v2 遷移
+        run: python3 scripts/verify_api_v2.py

@@ -23,6 +23,7 @@ import os
 import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -30,8 +31,10 @@ from datetime import datetime, timedelta, timezone
 GAMMA_API = "https://gamma-api.polymarket.com"
 DATA_API = "https://data-api.polymarket.com"
 
-PAGE_SIZE = 500
-MAX_OFFSET = 10000          # Data API 的 offset 上限
+# Data API v2 的每頁上限是 1000（實測 5000 會回 400）。
+PAGE_SIZE = 1000
+# 保險絲：正常一個縣市幾千筆就到底了，真的翻超過這個頁數代表有東西不對勁。
+MAX_PAGES = 50
 TIMEOUT = 30
 
 TZ8 = timezone(timedelta(hours=8))
@@ -41,8 +44,9 @@ ROOT = os.path.dirname(_HERE)
 SNAPSHOT_DIR = os.path.join(ROOT, "snapshots")
 
 # 已知錢包名冊。這是「哪些錢包算看過了」的唯一依據，會 commit 進 repo。
-# 不從 data-*.json 反推，因為那些檔有 MAX_OFFSET 上限，
-# 將來筆數成長到截斷時，早期錢包會被誤判成新錢包而爆寄通知。
+# 不從 data-*.json 反推：那是「現在抓得到什麼」，不是「以前看過什麼」，
+# 一旦 API 的查詢範圍縮水（v1 時代有 10,000 筆的 offset 上限，v2 則是
+# 官方說有三年的滾動保留期），早期錢包就會被誤判成新錢包而爆寄通知。
 SEEN_WALLETS_PATH = os.path.join(ROOT, "seen_wallets.json")
 
 # 錢包帳號資訊快取（加入時間、全站預測次數），會 commit 進 repo。
@@ -143,10 +147,14 @@ def http_get_json(url: str):
 
 def fetch_event(event_id: int) -> dict:
     """抓 event 元資料（含各候選人 market 的賠率、成交量、流動性）"""
-    arr = http_get_json(f"{GAMMA_API}/events?id={event_id}")
-    if not arr:
+    # 用 /events/{id} 而不是 /events?id={id}：後者回應帶 deprecation 標頭
+    # （sunset 日期 2026-05-01 早就過了），哪天被關掉都不奇怪。
+    # 路徑式端點直接回單一物件，不是陣列。
+    ev = http_get_json(f"{GAMMA_API}/events/{event_id}")
+    if not ev:
         raise RuntimeError(f"event {event_id} 查不到")
-    ev = arr[0] if isinstance(arr, list) else arr
+    if isinstance(ev, list):          # 保險：萬一哪天改回陣列也接得住
+        ev = ev[0]
 
     # 只留前端要用的欄位，避免快照檔塞入大量無用資料
     markets = []
@@ -177,38 +185,62 @@ def fetch_event(event_id: int) -> dict:
 
 
 def fetch_all_trades(event_id: int) -> list:
-    """分頁抓完整成交明細，直到回傳空陣列為止"""
-    out, offset = [], 0
-    while offset < MAX_OFFSET:
-        url = (f"{DATA_API}/trades?eventId={event_id}&takerOnly=true"
-               f"&limit={PAGE_SIZE}&offset={offset}")
-        batch = http_get_json(url)
-        if not isinstance(batch, list) or not batch:
-            break
+    """
+    分頁抓完整成交明細。
+
+    2026-11-02 起 Data API v1 退役（打舊網址一律回 410 Gone），改用 v2：
+      • 回應包在 {"data": [...], "pagination": {...}} 裡，不再是裸陣列
+      • 不能用 offset（傳了會回 400），改成一路跟著 next_cursor 翻
+      • 好處是沒有 v1 那個 10,000 筆的天花板，而且翻頁期間有新成交進來
+        也不會像 offset 那樣造成重複或漏列
+    """
+    out, cursor, pages = [], None, 0
+    while pages < MAX_PAGES:
+        url = (f"{DATA_API}/v2/trades?event_id={event_id}&taker_only=true"
+               f"&limit={PAGE_SIZE}")
+        if cursor:
+            url += "&cursor=" + urllib.parse.quote(cursor, safe="")
+        resp = http_get_json(url)
+        batch = (resp or {}).get("data") or []
         out.extend(batch)
-        if len(batch) < PAGE_SIZE:
+        pages += 1
+        cursor = ((resp or {}).get("pagination") or {}).get("next_cursor")
+        if not cursor:
             break
-        offset += PAGE_SIZE
     else:
-        print(f"    ⚠️ 已達 offset 上限 {MAX_OFFSET}，更早的紀錄需改用 start/end 時間窗查詢")
+        print(f"    ⚠️ 已翻滿 {MAX_PAGES} 頁仍沒到底，這個縣市的紀錄可能不完整")
     return out
 
 
 def slim_trade(t: dict) -> dict:
-    """只保留追查與呈現需要的欄位"""
+    """
+    只保留追查與呈現需要的欄位。
+
+    v2 回來的欄位名是 snake_case（proxy_wallet），v1 是 camelCase（proxyWallet）。
+    這裡「讀 v2、寫 v1」——輸出的鍵名刻意維持原樣，
+    這樣 data-*.json 的格式不變，前端 app.js 和既有的歷史快照都不用動。
+    get() 裡並列兩種寫法，是為了讓這支函式拿 v1 的舊資料也能跑（回填腳本會用到）。
+    """
+    def pick(*keys):
+        for k in keys:
+            v = t.get(k)
+            if v is not None:
+                return v
+        return None
+
     return {
         "timestamp": t.get("timestamp"),
-        "conditionId": t.get("conditionId"),
-        "asset": t.get("asset"),
+        "conditionId": pick("condition_id", "conditionId"),
+        "asset": pick("token_id", "asset"),
         "title": t.get("title"),
         "outcome": t.get("outcome"),
         "side": t.get("side"),
         "size": t.get("size"),
         "price": t.get("price"),
-        "proxyWallet": t.get("proxyWallet"),
+        "proxyWallet": pick("proxy_wallet", "proxyWallet"),
         "name": t.get("name"),
         "pseudonym": t.get("pseudonym"),
-        "transactionHash": t.get("transactionHash"),
+        "transactionHash": pick("transaction_hash", "transactionHash"),
     }
 
 
@@ -353,9 +385,9 @@ def merge_new_wallets(records: list) -> int:
     把這輪新發現的錢包併進 new-wallets.json，回傳合併後的總筆數。
 
     ⚠️ 一定要「合併」而不是每輪重新產生。首筆交易明細是從 data-*.json 撈的，
-    而那些檔有 MAX_OFFSET 上限；等成交筆數成長到截斷，早期錢包的首筆交易
-    就會從 data-*.json 消失。若每輪重建，這份名單會跟著愈縮愈短。
-    合併寫入則是記過就不會掉。
+    而那份檔案只反映「這輪 API 回了什麼」；只要 API 的查詢範圍縮水（或像
+    2026-11-02 那樣整個改版），早期錢包的首筆交易就會從 data-*.json 消失。
+    若每輪重建，這份名單會跟著愈縮愈短。合併寫入則是記過就不會掉。
     """
     existing = {}
     if os.path.exists(NEW_WALLETS_PATH):
@@ -415,8 +447,10 @@ def fetch_one_profile(wallet: str, need_created: bool) -> dict:
         except Exception:
             pass
     try:
-        t = http_get_json(f"{DATA_API}/traded?user={wallet}")
-        out["traded"] = t.get("traded")
+        # v1 的 /traded 隨 Data API v1 一起退役，對應端點是 /v2/user-stats。
+        # 回應包一層 data，查無此人時 data 會是 null。
+        t = http_get_json(f"{DATA_API}/v2/user-stats?user={wallet}")
+        out["traded"] = ((t or {}).get("data") or {}).get("trades")
     except Exception:
         pass
     return out

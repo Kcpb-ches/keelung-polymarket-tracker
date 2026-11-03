@@ -56,8 +56,8 @@ def main(dry: bool = False) -> int:
         for wallet, t in firsts.items():
             records.append(_wallet_entry(cfg, t, cond_to_cand))
 
-        # 名冊裡有、但 data 檔撈不到的錢包：多半代表該縣市的成交明細已經被
-        # MAX_OFFSET 截斷。這種的首筆交易再也撈不回來，只能放棄，但要講出來。
+        # 名冊裡有、但 data 檔撈不到的錢包：代表該縣市的成交明細沒涵蓋到那麼早
+        # （抓取上限或 API 保留期）。這種的首筆交易再也撈不回來，只能放棄，但要講出來。
         known = set(roster.get(str(cfg["id"]), {}))
         missing = known - set(firsts)
         missing_total += len(missing)

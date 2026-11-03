@@ -12,7 +12,7 @@
 
 // 版號跟 index.html 的 ?v= 對應。若 console 印出的版號跟你剛改的不一樣，
 // 代表瀏覽器讀的是快取的舊檔，按 Cmd+Shift+R 強制重新載入。
-const APP_VERSION = 21;
+const APP_VERSION = 22;
 console.log(`[選舉賭盤監控] app.js v${APP_VERSION}`);
 
 // ── 設定 ────────────────────────────────────────────────────
@@ -23,8 +23,8 @@ const REFRESH_INTERVAL = 300000;  // 5 分鐘。這些盤成交稀疏，刷得�
 const LIVE_TIMEOUT     = 8000;    // 直連逾時（毫秒），逾時就改走快照
 const RETRY_ATTEMPTS   = 3;       // 直連失敗時的重試次數（含第一次）
 const RETRY_DELAY      = 700;     // 重試間隔（毫秒）
-const TRADE_PAGE_SIZE  = 500;     // 每次向 API 要幾筆
-const MAX_TRADES       = 10000;   // Data API 的 offset 上限
+const TRADE_PAGE_SIZE  = 1000;    // 每次向 API 要幾筆（v2 的上限就是 1000）
+const MAX_TRADE_PAGES  = 20;      // 保險絲：翻超過這麼多頁就停，避免無限迴圈
 const EARLY_WINDOW_H   = 24;      // 開盤後幾小時內進場算「早期交易者」
 
 /**
@@ -355,17 +355,43 @@ async function fetchJsonRetry(url, attempts = RETRY_ATTEMPTS) {
 }
 
 /**
- * 直連抓成交明細（Data API）。
+ * 直連抓成交明細（Data API v2）。
  * 這是核心資料，實測從瀏覽器直連相當穩定。
+ *
+ * 2026-11-02 起 v1 退役（舊網址一律回 410），v2 的三個差別：
+ *   1. 回應包在 { data: [...], pagination: {...} } 裡，不再是裸陣列
+ *   2. 不能用 offset（傳了會回 400），改成跟著 next_cursor 翻頁
+ *   3. 欄位名改成 snake_case
+ * 為了不動到後面的 normalizeTrades 和快照檔格式，這裡抓完就地譯回 camelCase。
  */
+function v2TradeToLegacy(t) {
+  return {
+    timestamp:       t.timestamp,
+    conditionId:     t.condition_id,
+    asset:           t.token_id,
+    title:           t.title,
+    outcome:         t.outcome,
+    side:            t.side,
+    size:            t.size,
+    price:           t.price,
+    proxyWallet:     t.proxy_wallet,
+    name:            t.name,
+    pseudonym:       t.pseudonym,
+    transactionHash: t.transaction_hash,
+  };
+}
+
 async function fetchTradesLive(eventId) {
   const trades = [];
-  for (let offset = 0; offset < MAX_TRADES; offset += TRADE_PAGE_SIZE) {
-    const batch = await fetchJsonRetry(
-      `${DATA_API}/trades?eventId=${eventId}&takerOnly=true&limit=${TRADE_PAGE_SIZE}&offset=${offset}`);
-    if (!Array.isArray(batch) || batch.length === 0) break;
-    trades.push(...batch);
-    if (batch.length < TRADE_PAGE_SIZE) break;
+  let cursor = null;
+  for (let page = 0; page < MAX_TRADE_PAGES; page++) {
+    let url = `${DATA_API}/v2/trades?event_id=${eventId}&taker_only=true&limit=${TRADE_PAGE_SIZE}`;
+    if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
+    const resp = await fetchJsonRetry(url);
+    const batch = (resp && resp.data) || [];
+    batch.forEach((t) => trades.push(v2TradeToLegacy(t)));
+    cursor = (resp && resp.pagination && resp.pagination.next_cursor) || null;
+    if (!cursor) break;
   }
   return trades;
 }
@@ -379,8 +405,9 @@ async function fetchTradesLive(eventId) {
  * 不可以因此把整頁降級成快照模式。
  */
 async function fetchEventLive(eventId) {
-  const evArr = await fetchJsonRetry(`${GAMMA_API}/events?id=${eventId}`);
-  const ev = Array.isArray(evArr) ? evArr[0] : evArr;
+  // 用 /events/{id}：?id= 那種寫法回應帶 deprecation 標頭，sunset 日期已經過了。
+  const raw = await fetchJsonRetry(`${GAMMA_API}/events/${eventId}`);
+  const ev = Array.isArray(raw) ? raw[0] : raw;
   if (!ev) throw new Error('event 不存在');
   return ev;
 }
