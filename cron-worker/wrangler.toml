@@ -17,5 +17,8 @@ preview_urls = false
 # ⚠️ 一天會跑 288 次，也就是 288 個 commit——因為 data-*.json 裡的
 #    fetched_at 每輪都會變，workflow 的「有變動才 commit」判斷一定成立。
 #    若覺得 repo 被洗版，要改的是 snapshot.yml 的比對方式，不是這裡。
+# 2026-11-03 暫停：Polymarket API 回 HTTP 410 Gone，每一輪都失敗。
+# 空陣列代表「移除所有排程」，deploy 後 Cloudflare 就不會再觸發。
+# 修好之後把下面那行換回 crons = ["*/5 * * * *"] 再 deploy 一次即可。
 [triggers]
-crons = ["*/5 * * * *"]
+crons = []
