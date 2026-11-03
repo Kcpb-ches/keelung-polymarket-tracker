@@ -1,8 +1,6 @@
-# 一次性診斷用。只能手動觸發，不含任何 secret，純粹對 Polymarket 的公開 API
-# 打幾發 curl 看狀態碼。查清楚 2026-11-03 開始的 HTTP 410 之後就可以刪掉這個檔案。
-#
-# 為什麼要繞到 GitHub 上跑：台灣的 IP 被 Polymarket 擋著，本機 curl 連不出去，
-# 而 GitHub 的執行機在美國，打得通。
+# 一次性診斷用。只能手動觸發，不含任何 secret。
+# 第一輪已確認：gamma-api 正常，data-api v1 整個退役（410）。
+# 這一輪要抓 v2 的規格並實測參數，查完就刪掉這個檔案。
 name: diag-polymarket
 
 on:
@@ -12,38 +10,34 @@ jobs:
   diag:
     runs-on: ubuntu-latest
     steps:
-      - name: 逐一測試 API 端點
+      - name: 抓官方遷移文件
+        run: |
+          for u in \
+            "https://docs.polymarket.com/migrate/data-api-v1-to-v2.md" \
+            "https://docs.polymarket.com/api-reference/data-api/migrating-from-v1.md" ; do
+            echo "=============================================================="
+            echo "▶ $u"
+            echo "--------------------------------------------------------------"
+            curl -sS -L --max-time 30 "$u" | head -c 12000
+            echo; echo
+          done
+
+      - name: 實測 v2 /trades 的參數組合
         run: |
           EVENT_ID=848410
-          UA='tw-election-polymarket-tracker/2.0'
-
           probe () {
             echo "=============================================================="
             echo "▶ $1"
-            echo "--------------------------------------------------------------"
-            # -s 安靜 -S 仍顯示錯誤 -D - 把回應標頭印到 stdout
-            curl -sS -D - -o /tmp/body.txt -A "$UA" -H 'Accept: application/json' \
-                 --max-time 30 "$1" || echo "(curl 本身失敗，離開碼 $?)"
-            echo "--- body 前 600 字元 ---"
-            head -c 600 /tmp/body.txt || true
-            echo
-            echo
+            code=$(curl -sS -o /tmp/b.txt -w '%{http_code}' \
+                   -H 'Accept: application/json' --max-time 30 "$1")
+            echo "HTTP $code"
+            head -c 900 /tmp/b.txt; echo; echo
           }
 
-          # 1. 現在程式在用的寫法（query string 帶 id）
-          probe "https://gamma-api.polymarket.com/events?id=${EVENT_ID}"
+          B=https://data-api.polymarket.com/v2/trades
 
-          # 2. RESTful 寫法（路徑帶 id）——如果 1 被棄用，通常是改成這種
-          probe "https://gamma-api.polymarket.com/events/${EVENT_ID}"
-
-          # 3. 不帶任何條件，確認 /events 這個端點本身還活著
-          probe "https://gamma-api.polymarket.com/events?limit=1"
-
-          # 4. 成交明細 API
-          probe "https://data-api.polymarket.com/trades?eventId=${EVENT_ID}&takerOnly=true&limit=2&offset=0"
-
-          # 5. 不帶條件的成交明細，確認 data-api 本身還活著
-          probe "https://data-api.polymarket.com/trades?limit=1"
-
-          # 6. 用 slug 查這場選舉盤，看是不是整個 event 被下架了
-          probe "https://gamma-api.polymarket.com/events?slug=keelung-mayor-election-winner-20260813135716100"
+          probe "$B?limit=2"
+          probe "$B?event_id=${EVENT_ID}&limit=2"
+          probe "$B?eventId=${EVENT_ID}&limit=2"
+          probe "$B?event_id=${EVENT_ID}&taker_only=true&limit=2"
+          probe "$B?event_id=${EVENT_ID}&limit=2&offset=0"
