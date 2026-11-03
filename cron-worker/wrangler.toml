@@ -14,11 +14,8 @@ preview_urls = false
 # snapshot.yml 裡的 GitHub 排程（每小時 :30）保留不動，
 # 當作這支 Worker 萬一掛掉時的備援。
 #
-# ⚠️ 一天會跑 288 次，也就是 288 個 commit——因為 data-*.json 裡的
-#    fetched_at 每輪都會變，workflow 的「有變動才 commit」判斷一定成立。
-#    若覺得 repo 被洗版，要改的是 snapshot.yml 的比對方式，不是這裡。
-# 2026-11-03 暫停：Polymarket API 回 HTTP 410 Gone，每一輪都失敗。
-# 空陣列代表「移除所有排程」，deploy 後 Cloudflare 就不會再觸發。
-# 修好之後把下面那行換回 crons = ["*/5 * * * *"] 再 deploy 一次即可。
+# 一天跑 288 次，但不會產生 288 個 commit——snapshot.yml 會先跑
+# should_commit.py，只比對成交明細本身，fetched_at 這種每輪都變的欄位不算。
+# 實測約 90% 的輪次會跳過 commit。
 [triggers]
-crons = []
+crons = ["*/5 * * * *"]
