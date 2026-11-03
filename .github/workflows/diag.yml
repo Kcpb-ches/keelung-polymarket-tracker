@@ -12,64 +12,36 @@ jobs:
         run: |
           W=0xd5be8990ef2512164f4aad2297e9b378bc1618e1
           E=848410
+
+          SUM='import json;d=json.load(open("/tmp/b.txt"));r=d.get("data") or [];print("筆數:",len(r));print("pagination:",json.dumps(d.get("pagination"),ensure_ascii=False)[:300]);print("欄位:",sorted(r[0].keys())) if r else None'
+          RAW='import json;print(json.dumps(json.load(open("/tmp/b.txt")),ensure_ascii=False)[:700])'
+
           probe () {
             echo "=============================================================="
-            echo "▶ $1"
+            echo "> $1"
             code=$(curl -sS -o /tmp/b.txt -w '%{http_code}' -H 'Accept: application/json' --max-time 30 "$1")
             echo "HTTP $code"
-            # 只印結構摘要，避免洗版
-            python3 - "$2" <<'PY'
-import json,sys
-try:
-    d=json.load(open('/tmp/b.txt'))
-except Exception as e:
-    print('(不是 JSON)', open('/tmp/b.txt').read()[:300]); raise SystemExit
-mode=sys.argv[1] if len(sys.argv)>1 else 'full'
-if mode=='page':
-    rows=d.get('data') or []
-    print('筆數:', len(rows))
-    print('pagination:', json.dumps(d.get('pagination'), ensure_ascii=False)[:400])
-    if rows: print('第一筆欄位:', sorted(rows[0].keys()))
-else:
-    print(json.dumps(d, ensure_ascii=False)[:800])
-PY
+            python3 -c "$2" || head -c 300 /tmp/b.txt
             echo
           }
 
-          # 1. 分頁：limit 上限與 cursor 長相
-          probe "https://data-api.polymarket.com/v2/trades?event_id=${E}&limit=500" page
-          probe "https://data-api.polymarket.com/v2/trades?event_id=${E}&limit=1000" page
-          probe "https://data-api.polymarket.com/v2/trades?event_id=${E}&limit=5000" page
+          probe "https://data-api.polymarket.com/v2/trades?event_id=${E}&limit=500" "$SUM"
+          probe "https://data-api.polymarket.com/v2/trades?event_id=${E}&limit=1000" "$SUM"
+          probe "https://data-api.polymarket.com/v2/trades?event_id=${E}&limit=5000" "$SUM"
+          probe "https://data-api.polymarket.com/v2/trades?event_id=${E}&taker_only=true&limit=500" "$SUM"
+          probe "https://data-api.polymarket.com/v2/trades?event_id=${E}&taker_only=false&limit=500" "$SUM"
+          probe "https://data-api.polymarket.com/v2/user-stats?user=${W}" "$RAW"
+          probe "https://gamma-api.polymarket.com/public-profile?address=${W}" "$RAW"
 
-          # 2. taker_only 到底有沒有在過濾（比對總筆數）
-          probe "https://data-api.polymarket.com/v2/trades?event_id=${E}&taker_only=true&limit=500" page
-          probe "https://data-api.polymarket.com/v2/trades?event_id=${E}&taker_only=false&limit=500" page
-
-          # 3. /traded 的替代品
-          probe "https://data-api.polymarket.com/v2/user-stats?user=${W}" full
-
-          # 4. gamma 的個人檔案端點還活著嗎
-          probe "https://gamma-api.polymarket.com/public-profile?address=${W}" full
-
-      - name: 第三輪 - 實際翻頁兩次確認 cursor 可用
+      - name: 第三輪 - 翻頁兩次確認 cursor 可用
         run: |
-          E=848410
-          B="https://data-api.polymarket.com/v2/trades?event_id=${E}&limit=500"
+          B="https://data-api.polymarket.com/v2/trades?event_id=848410&limit=500"
           curl -sS -H 'Accept: application/json' --max-time 30 "$B" -o /tmp/p1.json
-          C=$(python3 -c "import json;print((json.load(open('/tmp/p1.json')).get('pagination') or {}).get('next_cursor') or '')")
+          C=$(python3 -c 'import json;print((json.load(open("/tmp/p1.json")).get("pagination") or {}).get("next_cursor") or "")')
           echo "第 1 頁 next_cursor = ${C:0:80}"
           if [ -n "$C" ]; then
             curl -sS -H 'Accept: application/json' --max-time 30 "${B}&cursor=${C}" -o /tmp/p2.json
-            python3 - <<'PY'
-import json
-a=json.load(open('/tmp/p1.json')); b=json.load(open('/tmp/p2.json'))
-ra,rb=a.get('data') or [], b.get('data') or []
-print('第 1 頁筆數:', len(ra), ' 第 2 頁筆數:', len(rb))
-ka=set(r['transaction_hash']+str(r['timestamp']) for r in ra)
-kb=set(r['transaction_hash']+str(r['timestamp']) for r in rb)
-print('兩頁重疊筆數:', len(ka & kb), '（0 代表 cursor 分頁乾淨）')
-print('第 2 頁 next_cursor 有值:', bool((b.get('pagination') or {}).get('next_cursor')))
-PY
+            python3 -c 'import json;a=json.load(open("/tmp/p1.json"));b=json.load(open("/tmp/p2.json"));ra=a.get("data") or [];rb=b.get("data") or [];k=lambda r:r["transaction_hash"]+str(r["timestamp"]);print("第1頁",len(ra),"筆　第2頁",len(rb),"筆");print("兩頁重疊:",len(set(map(k,ra))&set(map(k,rb))),"（0 代表分頁乾淨）");print("第2頁還有 next_cursor:",bool((b.get("pagination") or {}).get("next_cursor")))'
           else
-            echo "沒有 next_cursor，代表一頁就抓完了"
+            echo "沒有 next_cursor，一頁就抓完"
           fi
