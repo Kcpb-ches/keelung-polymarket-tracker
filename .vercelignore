@@ -1,0 +1,6 @@
+# 萬一將來手動部署，這些東西不需要上線
+.github/
+scripts/
+cron-worker/
+snapshots/
+*.md

@@ -27,17 +27,27 @@
 | 嘉義市 | 848453 | `#chiayi-city` |
 | 苗栗縣 | 848436 | `#miaoli` |
 
-### 兩個網址（內容完全相同）
+### 網址
 
-| 平台 | 網址 | 備註 |
-|---|---|---|
-| **Vercel** | <https://keelung-polymarket-tracker.vercel.app/> | **主要**，Ches 的內網擋 github.io |
-| GitHub Pages | <https://kcpb-ches.github.io/keelung-polymarket-tracker/> | 備用 |
+<https://kcpb-ches.github.io/keelung-polymarket-tracker/>
 
-兩者都接同一個 GitHub repo 自動部署，Actions 每次 commit 快照後兩邊都會更新。
+GitHub Pages 自動部署，Actions 每次 commit 快照後就會更新。
+Ches 的辦公室內網擋 github.io，要用外網電腦開。
 
 網址帶錨點可直接開到指定縣市，例如
-<https://keelung-polymarket-tracker.vercel.app/#kaohsiung>。
+<https://kcpb-ches.github.io/keelung-polymarket-tracker/#kaohsiung>。
+
+#### Vercel 為什麼不用了
+
+原本 Vercel 是主要網址（內網擋 github.io 的權宜之計），2026-11-09 停用。
+
+Vercel 會把**每一次部署**都留一份存檔，而這個 repo 一次部署約 15 MB
+（光 `data-*.json` 就 11 MB），bot 又是每幾分鐘 commit 一次——
+六天累積約 978 次部署，直接把免費方案的 10 GB 儲存塞滿。
+
+根目錄的 `vercel.json` 裡 `git.deploymentEnabled: false` 就是在關掉自動部署。
+`.vercelignore` 則是萬一將來要手動部署時，把不需要上線的目錄排掉。
+GitHub Pages 沒有這種按次累積的計費方式，所以換過去。
 
 ---
 

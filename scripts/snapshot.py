@@ -70,10 +70,16 @@ NOTIFY_HTML_PATH = os.path.join(ROOT, "new_wallets.html")
 NOTIFY_SUBJECT_PATH = os.path.join(ROOT, "new_wallets_subject.txt")
 
 # 通知信裡「開啟監控頁面」按鈕的連結。
-# 用 Vercel 而非 GitHub Pages，因為 Ches 的內網擋 github.io。
-# 兩個網址都是同一個 repo 自動部署，內容完全一致。
-SITE_URL = "https://keelung-polymarket-tracker.vercel.app/"
-SITE_URL_ALT = "https://kcpb-ches.github.io/keelung-polymarket-tracker/"
+#
+# 2026-11-09 從 Vercel 換成 GitHub Pages。原因是 Vercel 會把「每一次部署」
+# 都留一份存檔，而這個 repo 每次部署約 15 MB（data-*.json 就佔 11 MB），
+# bot 又是每幾分鐘 commit 一次，六天就把免費方案的 10 GB 塞爆。
+# GitHub Pages 沒有這種按次累積的計費方式，內容也完全一樣。
+# Ches 的辦公室內網擋 github.io，改用外網電腦開。
+#
+# Vercel 的自動部署已由 repo 根目錄的 vercel.json 關閉，那個網址會停在
+# 最後一次部署的舊資料，所以不再放進信裡。
+SITE_URL = "https://kcpb-ches.github.io/keelung-polymarket-tracker/"
 
 # ── 縣市設定 ────────────────────────────────────────────────
 # 要新增縣市：在這裡加一筆，並在 app.js 的 EVENTS 加對應的一筆。
@@ -709,8 +715,7 @@ def build_notification(by_city: dict, cross: dict, test: bool = False):
     </a>
   </p>
   <p style="margin:0;font-size:11.5px;color:#818b98">
-    上面按鈕連到 Vercel。若打不開，備用網址：
-    <a href="{SITE_URL_ALT}" style="color:#0969da">GitHub Pages ↗</a>
+    網址：<a href="{SITE_URL}" style="color:#0969da">{SITE_URL}</a>
   </p>
 
   <p style="margin:22px 0 0;padding-top:14px;border-top:1px solid #e6eaef;
