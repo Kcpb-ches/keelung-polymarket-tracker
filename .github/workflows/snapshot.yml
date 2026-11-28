@@ -41,6 +41,17 @@ concurrency:
 jobs:
   snapshot:
     runs-on: ubuntu-latest
+
+    env:
+      # 新錢包通知信的總開關。
+      #
+      # 2026-11-28（選舉投票日）Ches 要求停止寄送：盤口進入最後衝刺，
+      # 成交量比 11/09 翻了一倍，新錢包一直進場，信會寄到爆。
+      # 抓資料與更新網頁不受影響，只是不再寄信。
+      #
+      # 要恢復寄信，把下面的 'false' 改成 'true' 就好，其他都不用動。
+      SEND_EMAIL: 'false'
+
     steps:
       - uses: actions/checkout@v7
 
@@ -88,7 +99,7 @@ jobs:
           fi
 
       - name: 寄送新錢包通知
-        if: steps.notify.outputs.send == 'true'
+        if: steps.notify.outputs.send == 'true' && env.SEND_EMAIL == 'true'
         uses: dawidd6/action-send-mail@v22
         with:
           server_address: smtp.gmail.com
